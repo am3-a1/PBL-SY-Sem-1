@@ -76,6 +76,21 @@ if [ "${ENVIRONMENT}" = "production" ]; then
         echo -e "  python -c \"import secrets; print(secrets.token_urlsafe(32))\""
         exit 1
     fi
+
+    # Cross-validate configuration via centralized Python Settings validator
+    PYTHON_CMD=""
+    if [ -x "$PROJECT_ROOT/backend/venv/bin/python" ]; then
+        PYTHON_CMD="$PROJECT_ROOT/backend/venv/bin/python"
+    elif command -v python3 >/dev/null 2>&1; then
+        PYTHON_CMD="python3"
+    fi
+
+    if [ -n "$PYTHON_CMD" ]; then
+        if ! "$PYTHON_CMD" "$PROJECT_ROOT/backend/config.py" --validate-production 2>/dev/null; then
+            echo -e "${RED}ERROR: Production configuration validation failed via config.py.${NC}"
+            exit 1
+        fi
+    fi
 fi
 
 # 2. Frontend Dependencies & Production Build
@@ -98,29 +113,29 @@ echo "Building frontend bundle..."
 npm run build
 
 # 3. Backend Dependencies & Database Migrations
-echo -e "${GREEN}[3/4] Preparing backend and database migrations...${NC}"
+echo -e "${GREEN}[3/4] Preparing backend environment & migrations...${NC}"
 cd "$PROJECT_ROOT/backend"
 
 if [ ! -d "venv" ]; then
     echo "Creating Python virtual environment..."
     python3 -m venv venv
     ./venv/bin/pip install --upgrade pip
-fi
-
-# Sync Python dependencies if requirements.txt is newer than stamp file
-if [ ! -f "venv/.installed" ] || [ "requirements.txt" -nt "venv/.installed" ]; then
-    echo "Syncing Python dependencies from requirements.txt..."
     ./venv/bin/pip install -r requirements.txt
-    touch "venv/.installed"
+elif [ "requirements.txt" -nt "venv" ]; then
+    echo "Updating backend dependencies..."
+    ./venv/bin/pip install -r requirements.txt
 fi
 
-# Validate Python configuration settings
-./venv/bin/python -c "from config import settings; settings.validate_production_configuration()"
+echo "Applying database migrations (alembic upgrade head)..."
+./venv/bin/alembic -c alembic.ini upgrade head
 
-# Run Alembic migrations
-echo "Executing database migrations (alembic upgrade head)..."
-./venv/bin/alembic upgrade head
+# 4. Start Production Server
+echo -e "${GREEN}[4/4] Launching FeedPulse production server...${NC}"
+echo -e "Host: ${HOST}, Port: ${PORT}, Environment: ${ENVIRONMENT}"
+echo -e "Serving application at: http://${HOST}:${PORT}"
 
-# 4. Start Uvicorn Server (Single port, serving API and static frontend)
-echo -e "${GREEN}[4/4] Starting FeedPulse production server on http://${HOST}:${PORT} ...${NC}"
-exec ./venv/bin/uvicorn main:app --host "${HOST}" --port "${PORT}" --no-access-log
+exec ./venv/bin/uvicorn main:app \
+    --host "${HOST}" \
+    --port "${PORT}" \
+    --workers 1 \
+    --log-level info

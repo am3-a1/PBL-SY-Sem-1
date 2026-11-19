@@ -477,3 +477,94 @@ def test_alembic_cli_upgrade_uses_settings_database_url(tmp_path):
         text=True,
     )
     assert res_down.returncode == 0, f"CLI downgrade failed: {res_down.stderr}\n{res_down.stdout}"
+
+
+def test_legacy_database_with_simultaneous_backup_keys_and_repeated_cycles(alembic_cfg, tmp_path):
+    """
+    Scenario 7:
+    Verifies that pre-existing suffix-based keys (such as :__orig__) and primary keys
+    existing simultaneously in legacy databases are never modified, clobbered, or deleted,
+    and that repeated upgrade -> downgrade -> upgrade cycles are 100% deterministic.
+    """
+    db_file = tmp_path / f"legacy_simultaneous_{uuid.uuid4().hex}.db"
+    conn = sqlite3.connect(str(db_file))
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE _alembic_migration_metadata (
+            key VARCHAR(100) PRIMARY KEY,
+            value VARCHAR(100) NOT NULL
+        );
+    """)
+
+    preexisting_simultaneous = {
+        "created_reviews": "primary_value",
+        "created_reviews:__orig__": "legacy_backup_value",
+        "rev_7051498a93a1:created_reviews": "scoped_primary",
+        "rev_7051498a93a1:created_reviews:__orig__": "scoped_backup",
+        "unrelated_setting": "preserve_me",
+    }
+
+    for k, v in preexisting_simultaneous.items():
+        cursor.execute(
+            "INSERT INTO _alembic_migration_metadata (key, value) VALUES (?, ?);",
+            (k, v),
+        )
+
+    cursor.execute("""
+        CREATE TABLE reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source VARCHAR(50) NOT NULL,
+            author VARCHAR(100) NOT NULL,
+            rating INTEGER,
+            content TEXT NOT NULL,
+            created_at DATETIME,
+            sentiment_score FLOAT NOT NULL,
+            sentiment_label VARCHAR(20) NOT NULL,
+            category_theme VARCHAR(50) NOT NULL,
+            status VARCHAR(50) NOT NULL
+        );
+    """)
+    cursor.execute(
+        "INSERT INTO reviews (source, author, rating, content, sentiment_score, sentiment_label, category_theme, status) "
+        "VALUES ('Test', 'Cycle User', 5, 'Great app', 0.8, 'Positive', 'General', 'New');"
+    )
+    conn.commit()
+    conn.close()
+
+    db_url = f"sqlite:///{db_file}"
+    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+
+    # Run 3 consecutive upgrade -> downgrade cycles
+    for cycle in range(3):
+        command.upgrade(alembic_cfg, "head")
+
+        conn = sqlite3.connect(str(db_file))
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(reviews);")
+        cols = {row[1] for row in cursor.fetchall()}
+        assert "theme_confidence" in cols
+
+        # Metadata table was never clobbered
+        for k, v in preexisting_simultaneous.items():
+            cursor.execute("SELECT value FROM _alembic_migration_metadata WHERE key = ?;", (k,))
+            assert cursor.fetchone() == (v,), f"Cycle {cycle}: Key {k} was corrupted during upgrade!"
+        conn.close()
+
+        command.downgrade(alembic_cfg, "base")
+
+        conn = sqlite3.connect(str(db_file))
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(reviews);")
+        cols_down = {row[1] for row in cursor.fetchall()}
+        assert "theme_confidence" not in cols_down
+
+        # Every key perfectly preserved
+        for k, v in preexisting_simultaneous.items():
+            cursor.execute("SELECT value FROM _alembic_migration_metadata WHERE key = ?;", (k,))
+            assert cursor.fetchone() == (v,), f"Cycle {cycle}: Key {k} was corrupted during downgrade!"
+
+        # Reviews data preserved
+        cursor.execute("SELECT author FROM reviews;")
+        assert cursor.fetchone() == ("Cycle User",)
+        conn.close()

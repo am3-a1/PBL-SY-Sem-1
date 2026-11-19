@@ -183,6 +183,7 @@ Any variables explicitly set in your shell environment take precedence over valu
 | `PORT` | `8000` | Backend port. |
 | `DATABASE_URL` | `sqlite:///./feedpulse.db` | SQLAlchemy connection string. |
 | `FEEDPULSE_API_KEY` | `feedpulse-dev-secret-key` (dev only) | Secret key for mutating operations. In production, an explicit key $\ge 16$ chars is mandatory. |
+| `REQUIRE_READ_AUTH` | `false` in dev, `true` in prod | Enforces API-key authentication for read endpoints (`/api/reviews`, `/api/themes`, `/api/analytics`, `/api/alerts/config`). |
 | `ALLOWED_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000` | Comma-separated CORS origins whitelist. In production, wildcard `*` and paths are rejected. |
 | `ALLOW_DEMO_SEEDING` | `true` in dev, `false` in prod | Disables the `/api/reviews/seed` route in production to prevent accidental demo data overwrites. |
 | `MAX_UPLOAD_SIZE_BYTES` | `5242880` (5 MB) | Maximum permitted CSV upload file size. |
@@ -249,29 +250,24 @@ cd backend
 
 ## Safe Offline Database Restore Procedure
 
-When recovering from data corruption or restoring historical data, perform an **offline restore** using this standard maintenance workflow:
+When recovering from data corruption or restoring historical data, perform an **offline restore** using the failure-resistant restore utility (`backend/backup.py`):
+
+### Architectural Safety Guarantees:
+- **Temporary Staging File:** The backup is restored into an isolated `.restore_<uuid>.tmp` staging file first. The live database is never touched directly.
+- **Dual Integrity Verification:** Both the source backup and the restored staging file undergo `PRAGMA integrity_check` and `PRAGMA quick_check`.
+- **Required Schema Validation:** The restored database is verified to contain required FeedPulse schema tables (`reviews`).
+- **Connection Disposal:** Active database pool connections are disposed before swap to release file locks.
+- **Rollback Safety Snapshot:** The destination database (and any active `-wal` / `-shm` sidecar files) is moved to a temporary `.bak` snapshot before replacement. If swapping fails, the original database is automatically restored.
+- **Self-Restoration Prevention:** Protects against restoring a database file onto itself.
+
+### Standard Restore Workflow:
 
 1. **Stop Application Processes:**
-   Ensure no active writers or application servers are accessing the database:
    ```bash
-   pkill -f uvicorn
+   pkill -f uvicorn || true
    ```
 
-2. **Create a Safety Backup of Current State:**
-   Never overwrite the existing database without taking a safety snapshot first:
-   ```bash
-   cp backend/feedpulse.db backend/feedpulse.db.pre-restore-safety-copy
-   ```
-
-3. **Verify Target Backup Integrity:**
-   Ensure the chosen backup file is valid and uncorrupted:
-   ```bash
-   sqlite3 backend/backups/feedpulse_backup_20261119_140000.sqlite3 "PRAGMA integrity_check;"
-   # Expected output: ok
-   ```
-
-4. **Restore Database:**
-   Use the built-in restore CLI or perform an atomic file copy:
+2. **Restore Database via CLI:**
    ```bash
    cd backend
    ./venv/bin/python backup.py --restore backups/feedpulse_backup_20261119_140000.sqlite3
@@ -366,15 +362,16 @@ cd backend
 ./venv/bin/pytest -v tests/
 ```
 
-Coverage (47 tests) includes:
-- **Alembic:** Fresh database migration, legacy migration with data preservation, pre-existing metadata and key collision safety, reversible downgrade safety, re-upgrade, and standalone CLI upgrade execution with environment URL resolution.
-- **Security:** Production configuration validation, constant-time `secrets.compare_digest` comparison, authentication headers (`X-API-Key`, `Authorization: Bearer`), production CORS origin validation, and production launcher checks.
-- **Import Safety:** Proves that importing the application module does not create database tables or schemas outside of Alembic.
-- **Read-Only Endpoints:** Proves that `GET /api/themes` and `GET /api/alerts/config` execute zero database writes.
-- **CSV:** Valid ratings, genuinely missing ratings, out-of-range ratings, non-numeric and decimal ratings, oversized text rejection without silent truncation, source validation, and atomic commits.
-- **Backups:** Online backup creation, backup restoration, integrity verification, collision resistance under rapid execution, corrupted backup rejection, and retention pruning (`0`, positive integers).
-- **NLP & Slack:** Sentiment polarity, star-rating weighting, TF-IDF theme classification, Slack webhook validation, masking, and sandbox mode.
-- **End-to-End Workflow:** Full integration workflow across database migration, unauthenticated 401 rejection, authenticated seeding, review status updating, alert configuration, analytics calculations, and disk persistence.
+Coverage (64 tests across 10 test suites) includes:
+- **Alembic (7 tests):** Fresh database migration, legacy database preservation, pre-existing metadata collision safety with isolated state tables, reversible downgrade safety, repeated multi-cycle migrations, and standalone CLI upgrade execution with dynamic environment URL resolution.
+- **Startup & Lifecycle (6 tests):** Successful application lifespan initialization, critical database connectivity failure aborts, missing schema table aborts with actionable migration hints, optional service degradation handling (Slack), and 503 Service Unavailable health-check reporting during degraded database states.
+- **Read & Write Security (10 tests):** Read-endpoint security enforcement under `REQUIRE_READ_AUTH=true`, public access retention for `/health` and `/api/health`, constant-time `secrets.compare_digest` verification, production configuration security validator, and production launcher checks.
+- **Import Safety (1 test):** Proves that importing the application module does not create database tables or schemas outside of Alembic.
+- **Read-Only Endpoints (1 test):** Proves that `GET /api/themes` and `GET /api/alerts/config` execute zero database writes.
+- **CSV Ingestion (10 tests):** Valid ratings, genuinely missing ratings, out-of-range ratings, non-numeric and decimal ratings, oversized text rejection without silent truncation, source validation, and atomic commits.
+- **Backups & Atomic Restoration (11 tests):** Online backup creation, temporary-staged restoration, integrity verification, required schema validation, same-source/target rejection, rollback recovery from replacement failure, WAL sidecar preservation, rapid-succession uniqueness, and retention pruning.
+- **NLP & Slack (6 tests):** Sentiment polarity, star-rating weighting, TF-IDF theme classification, Slack webhook validation, masking, and sandbox mode.
+- **End-to-End Workflow (1 test):** Full integration workflow across database migration, unauthenticated 401 rejection, authenticated seeding, review status updating, alert configuration, analytics calculations, and disk persistence.
 
 ### Frontend Tests (vitest)
 
@@ -391,6 +388,20 @@ Coverage (22 tests across 5 suites) includes:
 - Theme switcher state cycling.
 
 ---
+
+
+---
+
+## Troubleshooting Common Deployment Failures
+
+| Symptom | Probable Cause | Corrective Action |
+| :--- | :--- | :--- |
+| `ERROR: FEEDPULSE_API_KEY environment variable is required in production mode.` | Production launcher started without setting `FEEDPULSE_API_KEY`. | Export a secure $\ge 16$ character key or configure it in `backend/.env`: `export FEEDPULSE_API_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"` |
+| `ERROR: Insecure default or weak FEEDPULSE_API_KEY detected in production environment.` | Using a known default key like `feedpulse-dev-secret-key` or `admin`. | Generate a high-entropy key via `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`. |
+| `HTTP 503 Service Unavailable` on `/health` (`missing tables: ['reviews', ...]`) | Application started before applying database migrations. | Execute `cd backend && ./venv/bin/alembic upgrade head` to initialize or update schema. |
+| `HTTP 401 Unauthorized` on `/api/reviews` | `REQUIRE_READ_AUTH` is enabled (default in production mode), but request is missing `X-API-Key` or `Authorization: Bearer` header. | In the web browser, open **Import & Settings -> API Key** tab and enter the configured secret key. For API clients, pass `X-API-Key: <KEY>`. |
+| `CORS origin error` in browser console | Origin URL is not in `ALLOWED_ORIGINS` whitelist. | Configure `ALLOWED_ORIGINS` in `.env` (e.g. `ALLOWED_ORIGINS="https://feedpulse.mycompany.com"`). Trailing slashes and wildcard `*` with credentials are forbidden. |
+| `Database replacement failed and was rolled back` | Filesystem permission error or locked database file during restore. | Ensure the target directory is writable and all `uvicorn` processes are terminated before running `--restore`. |
 
 ## Deployment Readiness & Scope Suitability
 

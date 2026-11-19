@@ -1,4 +1,19 @@
+"""Centralized FeedPulse Application Configuration
+
+Supported .env File Syntax:
+---------------------------
+- KEY=value                  # Standard unquoted key-value pair
+- KEY="value with spaces"    # Double-quoted string (preserves internal whitespace)
+- KEY='value with spaces'    # Single-quoted string
+- KEY=                       # Empty string
+- # Comment line             # Ignored
+- KEY="value" # Comment      # Trailing comments stripped
+- Search order: `backend/.env` then project root `.env`
+- Precedence: Existing shell environment variables ALWAYS take precedence over .env files.
+"""
+
 import os
+import sys
 import re
 from pathlib import Path
 from typing import List, Optional
@@ -54,6 +69,16 @@ class Settings:
             "FEEDPULSE_API_KEY",
             "" if self.IS_PRODUCTION else "feedpulse-dev-secret-key"
         )
+
+        # Read-Endpoint Security Policy
+        # In production, read endpoints require API-key authentication by default
+        # to prevent unauthorized scraping of customer feedback, sentiments, and alert configs.
+        # In development, read access is open by default for local exploration,
+        # but can be enforced by setting REQUIRE_READ_AUTH=true.
+        self.REQUIRE_READ_AUTH: bool = os.getenv(
+            "REQUIRE_READ_AUTH",
+            "true" if self.IS_PRODUCTION else "false"
+        ).lower() in ("true", "1", "yes")
 
         # CORS Allowed Origins
         _raw_origins = os.getenv(
@@ -181,3 +206,28 @@ def mask_slack_webhook(url: Optional[str]) -> Optional[str]:
         bot = parts[5][:2] + "***" if len(parts[5]) >= 2 else "***"
         return f"https://hooks.slack.com/services/{team}/{bot}/******"
     return "https://hooks.slack.com/services/****/****/****"
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="FeedPulse Configuration Utility")
+    parser.add_argument("--validate-production", action="store_true", help="Validate production settings")
+    parser.add_argument("--dump-env", action="store_true", help="Dump loaded configuration as key-value pairs")
+    args = parser.parse_args()
+
+    if args.validate_production:
+        try:
+            settings.validate_production_configuration()
+            print("OK: Production configuration is valid.")
+            sys.exit(0)
+        except Exception as exc:
+            print(f"{exc}", file=sys.stderr)
+            sys.exit(1)
+    elif args.dump_env:
+        print(f"ENVIRONMENT={settings.ENVIRONMENT}")
+        print(f"HOST={settings.HOST}")
+        print(f"PORT={settings.PORT}")
+        print(f"DATABASE_URL={settings.DATABASE_URL}")
+        print(f"REQUIRE_READ_AUTH={settings.REQUIRE_READ_AUTH}")
+        print(f"ALLOW_DEMO_SEEDING={settings.ALLOW_DEMO_SEEDING}")
+        print(f"ALLOWED_ORIGINS={','.join(settings.ALLOWED_ORIGINS)}")

@@ -8,6 +8,7 @@ from typing import List, Optional, Dict, Any, Union
 import pandas as pd
 from fastapi import (
     FastAPI,
+    Response,
     Depends,
     HTTPException,
     Query,
@@ -55,12 +56,32 @@ logging.basicConfig(level=logging.INFO)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 1. Critical: Production security configuration check
     settings.validate_production_configuration()
     logger.info(f"Configured CORS allowed origins: {settings.ALLOWED_ORIGINS}")
-    # Initialize default themes and alert config on startup if tables exist and are empty
+
+    # 2. Critical: Database initialization and schema verification
     session_factory = getattr(app.state, "db_session_factory", None) or database.SessionLocal
-    db = session_factory()
+    db = None
     try:
+        db = session_factory()
+        # Check basic database connectivity
+        db.execute(func.now() if not settings.DATABASE_URL.startswith("sqlite") else func.time())
+
+        # Verify schema tables in non-test runs (or unless explicitly bypassed)
+        skip_schema_check = getattr(app.state, "skip_schema_check", False) or settings.ENVIRONMENT == "test"
+        if not skip_schema_check:
+            import sqlalchemy as sa
+            inspector = sa.inspect(db.get_bind())
+            existing_tables = set(inspector.get_table_names())
+            required_tables = {"reviews", "themes", "alert_configs"}
+            missing = required_tables - existing_tables
+            if missing:
+                raise RuntimeError(
+                    f"Critical startup failure: Database is missing required tables: {sorted(missing)}. "
+                    "Run 'alembic upgrade head' before starting FeedPulse."
+                )
+
         init_default_themes(db)
         existing_alert = db.query(AlertConfig).first()
         if not existing_alert:
@@ -72,10 +93,34 @@ async def lifespan(app: FastAPI):
             db.add(config)
             db.commit()
     except Exception as exc:
-        logger.warning(f"Startup database initialization skipped or deferred: {exc}")
-        db.rollback()
+        if db is not None:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        is_test_env = settings.ENVIRONMENT == "test" or getattr(app.state, "allow_db_init_failure", False)
+        if is_test_env:
+            logger.warning(f"Startup database initialization deferred: {exc}")
+        else:
+            logger.error(f"Critical startup database initialization failure: {exc}")
+            raise RuntimeError(f"Critical startup failure during database initialization: {exc}") from exc
     finally:
-        db.close()
+        if db is not None:
+            try:
+                db.close()
+            except Exception:
+                pass
+
+    # 3. Optional service check (Slack notification readiness)
+    app.state.optional_services = {}
+    if settings.DEFAULT_SLACK_WEBHOOK_URL:
+        if validate_slack_webhook_url(settings.DEFAULT_SLACK_WEBHOOK_URL):
+            app.state.optional_services["slack"] = "configured"
+        else:
+            logger.warning("Optional service Slack webhook configured with invalid URL format.")
+            app.state.optional_services["slack"] = "degraded: invalid url"
+    else:
+        app.state.optional_services["slack"] = "not_configured"
 
     logger.info(f"FeedPulse API started in {settings.ENVIRONMENT} mode.")
     yield
@@ -137,6 +182,20 @@ def verify_api_key(
             detail="Invalid or missing API key. Provide a valid 'X-API-Key' or 'Authorization: Bearer <KEY>' header.",
         )
     return True
+
+
+def verify_read_access(
+    x_api_key: Optional[str] = Security(api_key_header),
+    authorization: Optional[str] = Header(None),
+) -> bool:
+    """
+    Validates API key for read endpoints when REQUIRE_READ_AUTH is active
+    (default in production mode). In development mode, allows unauthenticated reads
+    unless REQUIRE_READ_AUTH is explicitly set to true.
+    """
+    if not settings.REQUIRE_READ_AUTH:
+        return True
+    return verify_api_key(x_api_key=x_api_key, authorization=authorization)
 
 
 DEFAULT_THEMES_METADATA = [
@@ -207,18 +266,39 @@ def get_or_create_alert_config(db: Session) -> AlertConfig:
 
 @app.get("/health", summary="Service health check")
 @app.get("/api/health", summary="API health check")
-def health_check(db: Session = Depends(get_db)):
+def health_check(response: Response, db: Session = Depends(get_db)):
     """Verifies service health, database connectivity, and configuration."""
     try:
         # Check DB connection
         db.execute(func.now() if not settings.DATABASE_URL.startswith("sqlite") else func.time())
+        import sqlalchemy as sa
+        inspector = sa.inspect(db.get_bind())
+        tables = set(inspector.get_table_names())
+        required_tables = {"reviews", "themes", "alert_configs"}
+        missing = required_tables - tables
+        if missing:
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+            return {
+                "status": "degraded",
+                "database": f"missing tables: {sorted(missing)}",
+                "environment": settings.ENVIRONMENT,
+                "version": "1.0.0",
+                "timestamp": datetime.utcnow().isoformat(),
+            }
         db_status = "connected"
     except Exception as exc:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         logger.error(f"Health check DB failure: {exc}")
-        db_status = f"unhealthy: {type(exc).__name__}"
+        return {
+            "status": "unhealthy",
+            "database": f"unhealthy: {type(exc).__name__}",
+            "environment": settings.ENVIRONMENT,
+            "version": "1.0.0",
+            "timestamp": datetime.utcnow().isoformat(),
+        }
 
     return {
-        "status": "healthy" if db_status == "connected" else "degraded",
+        "status": "healthy",
         "database": db_status,
         "environment": settings.ENVIRONMENT,
         "version": "1.0.0",
@@ -565,6 +645,7 @@ async def upload_reviews_csv(
     "/api/reviews",
     response_model=Union[PaginatedReviewResponse, List[ReviewResponse]],
     summary="Get reviews with filters and pagination",
+    dependencies=[Depends(verify_read_access)],
 )
 def get_reviews(
     source: Optional[str] = Query(None, description="App Store, Google Play, Reddit, Discord"),
@@ -683,7 +764,7 @@ def clear_all_reviews(db: Session = Depends(get_db)):
 # THEMES & WORKFLOW ROUTES
 # ---------------------------------------------------------
 
-@app.get("/api/themes", response_model=List[ThemeResponse], summary="List all themes with review metrics")
+@app.get("/api/themes", response_model=List[ThemeResponse], summary="List all themes with review metrics", dependencies=[Depends(verify_read_access)])
 def list_themes(db: Session = Depends(get_db)):
     """
     Optimized: aggregates counts across themes in grouped database queries
@@ -732,7 +813,7 @@ def list_themes(db: Session = Depends(get_db)):
     return res
 
 
-@app.get("/api/themes/{theme_id}", response_model=ThemeResponse, summary="Get single theme details")
+@app.get("/api/themes/{theme_id}", response_model=ThemeResponse, summary="Get single theme details", dependencies=[Depends(verify_read_access)])
 def get_theme(theme_id: int, db: Session = Depends(get_db)):
     theme = db.query(Theme).filter(Theme.id == theme_id).first()
     if not theme:
@@ -854,7 +935,7 @@ def bulk_escalate_theme(theme_id: int, db: Session = Depends(get_db)):
 # DATABASE-SIDE ANALYTICS ENDPOINTS
 # ---------------------------------------------------------
 
-@app.get("/api/analytics/summary", response_model=AnalyticsSummary, summary="Get aggregate analytics")
+@app.get("/api/analytics/summary", response_model=AnalyticsSummary, summary="Get aggregate analytics", dependencies=[Depends(verify_read_access)])
 def get_analytics_summary(db: Session = Depends(get_db)):
     """
     Optimized: Executes fully database-side aggregate queries (COUNT, AVG, GROUP BY)
@@ -998,7 +1079,7 @@ def get_analytics_summary(db: Session = Depends(get_db)):
 # ALERT CONFIGURATION & SLACK ENDPOINTS
 # ---------------------------------------------------------
 
-@app.get("/api/alerts/config", response_model=AlertConfigResponse, summary="Get alert configuration")
+@app.get("/api/alerts/config", response_model=AlertConfigResponse, summary="Get alert configuration", dependencies=[Depends(verify_read_access)])
 def get_alert_config(db: Session = Depends(get_db)):
     config = db.query(AlertConfig).first()
     if not config:

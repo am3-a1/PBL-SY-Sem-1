@@ -54,6 +54,7 @@ export default function App() {
       setReviews(Array.isArray(data) ? data : data.items || [])
     } catch (err) {
       console.error('Failed to fetch reviews:', err)
+      handleError(err, 'Failed to fetch reviews')
     }
   }
 
@@ -64,6 +65,7 @@ export default function App() {
       setSummary(data)
     } catch (err) {
       console.error('Failed to fetch summary:', err)
+      handleError(err, 'Failed to fetch analytics summary')
     }
   }
 
@@ -74,6 +76,7 @@ export default function App() {
       setAlertConfig(data)
     } catch (err) {
       console.error('Failed to fetch alert config:', err)
+      handleError(err, 'Failed to fetch alert configuration')
     }
   }
 
