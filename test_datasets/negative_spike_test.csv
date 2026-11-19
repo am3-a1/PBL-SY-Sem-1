@@ -1,0 +1,13 @@
+source,author,rating,content
+App Store,Devon_Miles,1,"App crashes immediately after launching version 4.2.0 on iOS 17. Completely locked out of my account!"
+Google Play,Priya_K,1,"Double charged my card $29.99 for the subscription renewal and the in-app restore purchase button is broken."
+Reddit,u/audio_geek,1,"Massive memory leak! RAM climbs to 3.2GB within 10 minutes and freezes my entire desktop."
+Discord,Zack#1234,, "Authentication with Google OAuth is failing with a 500 server error code. Cannot log in at all."
+App Store,Marcus_V,1,"The biometric FaceID login broke after the latest release. Shows black screen then force closes."
+Google Play,Elena_R,1,"Canceled my subscription during the free trial period but was still charged $49.99 without consent."
+Reddit,u/dev_complaints,1,"Infinite loading spinner on startup. The app doesn't load dashboard data and crashes after 30 seconds."
+Discord,Sarah_Q#8821,, "Login session expires every 5 minutes and logging back in fails with cryptic error 0x88."
+App Store,Kevin_B,1,"Worst update ever. Battery drains 30% in 15 minutes and my iPhone 15 Pro gets dangerously hot."
+Google Play,Lucas_M,1,"The paywall locks features I already bought lifetime access for. Support has not replied in 4 days."
+App Store,Hannah_T,2,"Frequent stutters and lag when scrolling through cards. Takes forever to respond to taps."
+Google Play,Jorge_S,1,"Login form keeps rejecting valid passwords with 'Invalid salt'. Completely broken authentication."
