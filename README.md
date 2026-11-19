@@ -366,8 +366,8 @@ cd backend
 ./venv/bin/pytest -v tests/
 ```
 
-Coverage (46 tests) includes:
-- **Alembic:** Fresh database migration, legacy migration with data preservation, pre-existing metadata and key collision safety, reversible downgrade safety, and re-upgrade.
+Coverage (47 tests) includes:
+- **Alembic:** Fresh database migration, legacy migration with data preservation, pre-existing metadata and key collision safety, reversible downgrade safety, re-upgrade, and standalone CLI upgrade execution with environment URL resolution.
 - **Security:** Production configuration validation, constant-time `secrets.compare_digest` comparison, authentication headers (`X-API-Key`, `Authorization: Bearer`), production CORS origin validation, and production launcher checks.
 - **Import Safety:** Proves that importing the application module does not create database tables or schemas outside of Alembic.
 - **Read-Only Endpoints:** Proves that `GET /api/themes` and `GET /api/alerts/config` execute zero database writes.

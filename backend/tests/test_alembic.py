@@ -418,3 +418,62 @@ def test_legacy_database_with_all_colliding_metadata_keys(alembic_cfg, tmp_path)
     cursor.execute("SELECT author, content FROM reviews;")
     assert cursor.fetchone() == ("Collision User", "Great work")
     conn.close()
+
+
+def test_alembic_cli_upgrade_uses_settings_database_url(tmp_path):
+    """
+    Scenario 6:
+    CLI execution of 'alembic upgrade head' without explicit programmatic override.
+    Verifies that Alembic env.py properly resolves DATABASE_URL and executes
+    without NoSuchModuleError (driver:// placeholder issue).
+    """
+    import subprocess
+    backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    alembic_bin = os.path.join(backend_dir, "venv", "bin", "alembic")
+    db_file = tmp_path / f"cli_test_{uuid.uuid4().hex}.db"
+    db_url = f"sqlite:///{db_file}"
+
+    env = os.environ.copy()
+    env["DATABASE_URL"] = db_url
+
+    # 1. Run upgrade head via CLI
+    res_upgrade = subprocess.run(
+        [alembic_bin, "upgrade", "head"],
+        env=env,
+        cwd=backend_dir,
+        capture_output=True,
+        text=True,
+    )
+    assert res_upgrade.returncode == 0, f"CLI upgrade failed: {res_upgrade.stderr}\n{res_upgrade.stdout}"
+    assert "NoSuchModuleError" not in res_upgrade.stderr
+
+    # Verify tables created
+    conn = sqlite3.connect(str(db_file))
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    tables = {row[0] for row in cursor.fetchall()}
+    assert "reviews" in tables
+    assert "themes" in tables
+    assert "alert_configs" in tables
+    conn.close()
+
+    # 2. Run current via CLI
+    res_curr = subprocess.run(
+        [alembic_bin, "current"],
+        env=env,
+        cwd=backend_dir,
+        capture_output=True,
+        text=True,
+    )
+    assert res_curr.returncode == 0
+    assert "7051498a93a1" in res_curr.stdout
+
+    # 3. Run downgrade base via CLI
+    res_down = subprocess.run(
+        [alembic_bin, "downgrade", "base"],
+        env=env,
+        cwd=backend_dir,
+        capture_output=True,
+        text=True,
+    )
+    assert res_down.returncode == 0, f"CLI downgrade failed: {res_down.stderr}\n{res_down.stdout}"
