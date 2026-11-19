@@ -3,6 +3,12 @@
  * --------------------------------
  * Provides unified request handling, error message extraction,
  * timeout management, and API key authentication injection.
+ *
+ * Security Note:
+ * Any client-side key (whether in localStorage or embedded via VITE_* env)
+ * is visible to anyone with access to the client browser or bundle.
+ * This client token acts as a shared API passphrase to protect destructive operations,
+ * not as strong user authentication or multi-tenant session management.
  */
 
 export class ApiError extends Error {
@@ -16,14 +22,38 @@ export class ApiError extends Error {
 
 export function getApiKey() {
   if (typeof localStorage !== 'undefined') {
-    return localStorage.getItem('feedpulse_api_key') || (import.meta.env && import.meta.env.VITE_API_KEY) || 'feedpulse-dev-secret-key'
+    const localKey = localStorage.getItem('feedpulse_api_key')
+    if (localKey && localKey.trim()) {
+      return localKey.trim()
+    }
   }
-  return (import.meta.env && import.meta.env.VITE_API_KEY) || 'feedpulse-dev-secret-key'
+  if (
+    typeof import.meta !== 'undefined' &&
+    import.meta.env &&
+    typeof import.meta.env.VITE_FEEDPULSE_API_KEY === 'string' &&
+    import.meta.env.VITE_FEEDPULSE_API_KEY.trim()
+  ) {
+    return import.meta.env.VITE_FEEDPULSE_API_KEY.trim()
+  }
+  if (
+    typeof import.meta !== 'undefined' &&
+    import.meta.env &&
+    typeof import.meta.env.VITE_API_KEY === 'string' &&
+    import.meta.env.VITE_API_KEY.trim()
+  ) {
+    return import.meta.env.VITE_API_KEY.trim()
+  }
+  // Strictly no silent fallback to known development default key
+  return ''
+}
+
+export function hasApiKey() {
+  return Boolean(getApiKey())
 }
 
 export function setApiKey(key) {
   if (typeof localStorage !== 'undefined') {
-    if (key) {
+    if (key && key.trim()) {
       localStorage.setItem('feedpulse_api_key', key.trim())
     } else {
       localStorage.removeItem('feedpulse_api_key')
@@ -35,6 +65,7 @@ async function request(endpoint, options = {}) {
   const apiKey = getApiKey()
   const headers = { ...(options.headers || {}) }
 
+  // Inject authentication header only when an API key is actually configured
   if (apiKey) {
     headers['X-API-Key'] = apiKey
   }

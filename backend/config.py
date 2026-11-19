@@ -1,30 +1,45 @@
 import os
 import re
-from urllib.parse import urlparse
 from typing import List, Optional
+from urllib.parse import urlparse
 
-# Load .env file if available
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
+KNOWN_INSECURE_KEYS = {
+    "feedpulse-dev-secret-key",
+    "secret",
+    "password",
+    "admin",
+    "123456",
+    "12345678",
+    "changeme",
+    "development",
+    "test",
+}
+
 
 class Settings:
-    # Environment
+    """
+    Centralized FeedPulse Application Configuration.
+    Reads environment variables with sensible defaults for local development,
+    and enforces strict security validation when running in production.
+    """
+
+    # Environment Mode
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development").lower()
     IS_PRODUCTION: bool = ENVIRONMENT == "production"
 
     # Server Bind
-    HOST: str = os.getenv("HOST", "127.0.0.1")
+    HOST: str = os.getenv("HOST", "0.0.0.0" if IS_PRODUCTION else "127.0.0.1")
     PORT: int = int(os.getenv("PORT", "8000"))
 
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./feedpulse.db")
 
     # API Security & Authentication
-    # Default key provided for frictionless student/dev setup, customizable for deployment
-    FEEDPULSE_API_KEY: str = os.getenv("FEEDPULSE_API_KEY", "feedpulse-dev-secret-key")
+    # In production, require an explicit, non-default key. In development, fallback to convenience key.
+    FEEDPULSE_API_KEY: str = os.getenv(
+        "FEEDPULSE_API_KEY",
+        "" if IS_PRODUCTION else "feedpulse-dev-secret-key"
+    )
 
     # CORS Allowed Origins
     _raw_origins = os.getenv(
@@ -52,6 +67,34 @@ class Settings:
     # Backup Directory
     BACKUP_DIR: str = os.getenv("BACKUP_DIR", os.path.join(os.path.dirname(__file__), "backups"))
     BACKUP_RETENTION_COUNT: int = int(os.getenv("BACKUP_RETENTION_COUNT", "10"))
+
+    def validate_production_configuration(self) -> None:
+        """
+        Validates critical security settings for production environments.
+        Raises ValueError with an actionable message if any requirement fails.
+        """
+        if not self.IS_PRODUCTION:
+            return
+
+        key = (self.FEEDPULSE_API_KEY or "").strip()
+        if not key:
+            raise ValueError(
+                "CRITICAL CONFIGURATION ERROR: In production mode (ENVIRONMENT=production), "
+                "FEEDPULSE_API_KEY must be explicitly configured via environment variable. "
+                "It cannot be empty or omitted."
+            )
+
+        if key.lower() in KNOWN_INSECURE_KEYS:
+            raise ValueError(
+                f"CRITICAL CONFIGURATION ERROR: The configured FEEDPULSE_API_KEY ('{key}') is a known "
+                "insecure development default. In production, configure a dedicated, high-entropy secret key."
+            )
+
+        if len(key) < 16:
+            raise ValueError(
+                f"CRITICAL CONFIGURATION ERROR: FEEDPULSE_API_KEY length is {len(key)} characters. "
+                "Production keys must be at least 16 characters long."
+            )
 
 
 settings = Settings()

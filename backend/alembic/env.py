@@ -22,14 +22,16 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Set dynamic sqlalchemy.url from settings
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# Set dynamic sqlalchemy.url from config or settings fallback
+current_url = config.get_main_option("sqlalchemy.url")
+if not current_url:
+    config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
-    url = config.get_main_option("sqlalchemy.url")
+    url = config.get_main_option("sqlalchemy.url") or settings.DATABASE_URL
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -43,7 +45,8 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = settings.DATABASE_URL
+    target_url = config.get_main_option("sqlalchemy.url") or settings.DATABASE_URL
+    configuration["sqlalchemy.url"] = target_url
     connectable = engine_from_config(
         configuration,
         prefix="sqlalchemy.",

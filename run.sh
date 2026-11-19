@@ -25,6 +25,9 @@ if [ ! -d "venv" ]; then
     ./venv/bin/pip install -r requirements.txt
 fi
 
+echo "Applying database migrations..."
+./venv/bin/alembic upgrade head
+
 # 2. Setup Frontend
 echo -e "${GREEN}[2/4] Checking Frontend dependencies...${NC}"
 cd "$PROJECT_ROOT/frontend"

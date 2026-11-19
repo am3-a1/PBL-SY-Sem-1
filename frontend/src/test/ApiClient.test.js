@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { api, ApiError, setApiKey, getApiKey } from '../api/client'
+import { api, ApiError, setApiKey, getApiKey, hasApiKey } from '../api/client'
 
 describe('API Client', () => {
   beforeEach(() => {
@@ -7,11 +7,18 @@ describe('API Client', () => {
     localStorage.clear()
   })
 
-  it('sets and retrieves API key properly', () => {
+  it('sets and retrieves API key properly without silent fallback', () => {
+    // When no key is set, returns empty string (no hardcoded insecure fallback)
+    expect(getApiKey()).toBe('')
+    expect(hasApiKey()).toBe(false)
+
     setApiKey('custom-test-key')
     expect(getApiKey()).toBe('custom-test-key')
+    expect(hasApiKey()).toBe(true)
+
     setApiKey('')
-    expect(getApiKey()).toBe('feedpulse-dev-secret-key')
+    expect(getApiKey()).toBe('')
+    expect(hasApiKey()).toBe(false)
   })
 
   it('extracts backend error message on 400 Bad Request', async () => {
@@ -31,7 +38,7 @@ describe('API Client', () => {
     await expect(api.getReviews()).rejects.toThrow('Backend service unavailable')
   })
 
-  it('attaches X-API-Key header to outgoing requests', async () => {
+  it('attaches X-API-Key header to outgoing requests only when key is set', async () => {
     let capturedHeaders = null
     global.fetch = vi.fn().mockImplementation((url, opts) => {
       capturedHeaders = opts.headers
@@ -43,6 +50,11 @@ describe('API Client', () => {
       })
     })
 
+    // Without key
+    await api.getReviews()
+    expect(capturedHeaders['X-API-Key']).toBeUndefined()
+
+    // With key
     setApiKey('my-secret-token')
     await api.getReviews()
     expect(capturedHeaders['X-API-Key']).toBe('my-secret-token')

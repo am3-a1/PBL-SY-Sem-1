@@ -1,7 +1,9 @@
 import os
 import io
 import logging
+import secrets
 from datetime import datetime
+from contextlib import asynccontextmanager
 from typing import List, Optional, Dict, Any, Union
 import pandas as pd
 from fastapi import (
@@ -53,10 +55,17 @@ logging.basicConfig(level=logging.INFO)
 # Initialize DB tables with constraints
 models.Base.metadata.create_all(bind=engine)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    settings.validate_production_configuration()
+    logger.info(f"FeedPulse API started in {settings.ENVIRONMENT} mode.")
+    yield
+
 app = FastAPI(
     title="FeedPulse API",
     description="Multi-Channel App Review & Feedback Triage Dashboard Backend",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Hardened CORS configuration (rejects wildcards with credentials in production)
@@ -67,6 +76,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
 
 # ---------------------------------------------------------
 # LIGHTWEIGHT AUTHENTICATION & SECURITY DEPENDENCY
@@ -79,21 +89,30 @@ def verify_api_key(
     authorization: Optional[str] = Header(None),
 ) -> bool:
     """
-    Validates API key for destructive or mutating endpoints.
+    Validates API key for destructive or mutating endpoints using constant-time comparison.
     Accepts:
       - X-API-Key header: <KEY>
-      - Authorization header: Bearer <KEY>
+      - Authorization header: Bearer <KEY> (case-insensitive prefix)
     """
-    provided_key = None
-    if x_api_key:
+    provided_key: Optional[str] = None
+    if x_api_key and x_api_key.strip():
         provided_key = x_api_key.strip()
-    elif authorization and authorization.startswith("Bearer "):
-        provided_key = authorization.replace("Bearer ", "").strip()
+    elif authorization and authorization.strip():
+        parts = authorization.strip().split(" ", 1)
+        if len(parts) == 2 and parts[0].lower() == "bearer" and parts[1].strip():
+            provided_key = parts[1].strip()
 
-    expected_key = settings.FEEDPULSE_API_KEY.strip()
+    expected_key = (settings.FEEDPULSE_API_KEY or "").strip()
 
-    if not provided_key or provided_key != expected_key:
-        logger.warning("Unauthorized access attempt to protected endpoint.")
+    if not provided_key or not expected_key:
+        logger.warning("Unauthorized access attempt: missing credentials or unconfigured key.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API key. Provide a valid 'X-API-Key' or 'Authorization: Bearer <KEY>' header.",
+        )
+
+    if not secrets.compare_digest(provided_key, expected_key):
+        logger.warning("Unauthorized access attempt: invalid API key.")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing API key. Provide a valid 'X-API-Key' or 'Authorization: Bearer <KEY>' header.",
@@ -392,7 +411,13 @@ async def upload_reviews_csv(
             continue
 
         if len(content_text) > settings.MAX_CONTENT_LENGTH:
-            content_text = content_text[: settings.MAX_CONTENT_LENGTH]
+            skipped_count += 1
+            if len(reasons) < 25:
+                reasons.append(
+                    f"Row {row_num}: Review content exceeds maximum allowed length of {settings.MAX_CONTENT_LENGTH} characters "
+                    f"(found {len(content_text)} characters)."
+                )
+            continue
 
         # Source validation (do NOT silently convert invalid sources)
         source = "App Store"
@@ -403,7 +428,7 @@ async def upload_reviews_csv(
                 source = matched_source
             else:
                 skipped_count += 1
-                if len(reasons) < 10:
+                if len(reasons) < 25:
                     reasons.append(f"Row {row_num}: Skipped invalid source '{raw_source}'. Must be one of {sorted(list(valid_sources))}.")
                 continue
 
@@ -414,17 +439,38 @@ async def upload_reviews_csv(
             if raw_author and raw_author.lower() != "nan":
                 author = raw_author[:100]
 
-        # Rating validation (1-5 or null)
+        # Rating validation (integer 1-5, or genuinely missing)
         rating = None
-        if rating_col and pd.notna(row.get(rating_col)):
-            try:
-                r_val = int(float(row[rating_col]))
-                if 1 <= r_val <= 5:
-                    rating = r_val
-                else:
-                    rating = None
-            except (ValueError, TypeError):
-                rating = None
+        if rating_col and rating_col in row and pd.notna(row.get(rating_col)):
+            raw_rating = str(row[rating_col]).strip()
+            # If empty string or NaN/null/none, treat as genuinely missing rating (None is valid)
+            if raw_rating and raw_rating.lower() not in ("", "nan", "null", "none"):
+                try:
+                    r_float = float(raw_rating)
+                    if not r_float.is_integer():
+                        skipped_count += 1
+                        if len(reasons) < 25:
+                            reasons.append(
+                                f"Row {row_num}: Invalid non-integer rating '{raw_rating}'. Rating must be an integer between 1 and 5."
+                            )
+                        continue
+                    r_val = int(r_float)
+                    if 1 <= r_val <= 5:
+                        rating = r_val
+                    else:
+                        skipped_count += 1
+                        if len(reasons) < 25:
+                            reasons.append(
+                                f"Row {row_num}: Rating '{raw_rating}' is out of range. Rating must be an integer between 1 and 5."
+                            )
+                        continue
+                except (ValueError, TypeError):
+                    skipped_count += 1
+                    if len(reasons) < 25:
+                        reasons.append(
+                            f"Row {row_num}: Invalid non-numeric rating '{raw_rating}'. Rating must be an integer between 1 and 5."
+                        )
+                    continue
 
         nlp_res = nlp.analyze_review_content(content_text, rating=rating)
         if nlp_res["sentiment_label"] == "Negative":
