@@ -68,38 +68,68 @@ def test_backup_retention_behavior(tmp_path):
     """
     Verifies retention pruning:
     - keep_count=2 keeps 2 newest files and removes older ones.
-    - keep_count=0 explicitly removes all files.
-    - invalid retention handled gracefully without crash.
+    - keep_count=0 disables pruning (all backups kept).
+    - keep_count=1 keeps 1 newest file.
+    - newly created backup path is never deleted.
     """
     backup_dir = tmp_path / "retention_backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
 
     # Create 4 dummy backup files with staggered timestamps
     filenames = [
-        "feedpulse_backup_20261101_100000.sqlite3",
-        "feedpulse_backup_20261102_100000.sqlite3",
-        "feedpulse_backup_20261103_100000.sqlite3",
-        "feedpulse_backup_20261104_100000.sqlite3",
+        "feedpulse_backup_20261101_100000_000001_aaa111.sqlite3",
+        "feedpulse_backup_20261102_100000_000002_bbb222.sqlite3",
+        "feedpulse_backup_20261103_100000_000003_ccc333.sqlite3",
+        "feedpulse_backup_20261104_100000_000004_ddd444.sqlite3",
     ]
     for idx, fname in enumerate(filenames):
         fpath = backup_dir / fname
         fpath.write_text("dummy")
-        # Stagger modification times
         os.utime(str(fpath), (1000 + idx * 100, 1000 + idx * 100))
 
-    # Keep newest 2
-    pruned = cleanup_old_backups(str(backup_dir), keep_count=2)
-    assert len(pruned) == 2
+    # keep_count=0 -> disables pruning, returns empty list, all 4 kept
+    pruned_zero = cleanup_old_backups(str(backup_dir), keep_count=0)
+    assert len(pruned_zero) == 0
+    assert len(os.listdir(str(backup_dir))) == 4
+
+    # keep_count=2 -> keeps newest 2, removes 2
+    pruned_two = cleanup_old_backups(str(backup_dir), keep_count=2)
+    assert len(pruned_two) == 2
     remaining = [f for f in os.listdir(str(backup_dir)) if f.endswith(".sqlite3")]
     assert len(remaining) == 2
-    assert "feedpulse_backup_20261104_100000.sqlite3" in remaining
-    assert "feedpulse_backup_20261103_100000.sqlite3" in remaining
+    assert "feedpulse_backup_20261104_100000_000004_ddd444.sqlite3" in remaining
+    assert "feedpulse_backup_20261103_100000_000003_ccc333.sqlite3" in remaining
 
-    # Explicit keep_count=0 prunes all remaining
-    pruned_all = cleanup_old_backups(str(backup_dir), keep_count=0)
-    assert len(pruned_all) == 2
-    remaining_after_zero = [f for f in os.listdir(str(backup_dir)) if f.endswith(".sqlite3")]
-    assert len(remaining_after_zero) == 0
+    # keep_count=1 -> keeps newest 1
+    pruned_one = cleanup_old_backups(str(backup_dir), keep_count=1)
+    assert len(pruned_one) == 1
+    assert len([f for f in os.listdir(str(backup_dir)) if f.endswith(".sqlite3")]) == 1
+
+
+def test_rapid_succession_backups_collision_resistance(tmp_path):
+    """
+    Verifies that multiple backups created in rapid succession have unique filenames
+    and do not overwrite each other.
+    """
+    db_file = tmp_path / "rapid.db"
+    backup_dir = tmp_path / "rapid_backups"
+
+    conn = sqlite3.connect(str(db_file))
+    conn.execute("CREATE TABLE t (id INT);")
+    conn.commit()
+    conn.close()
+
+    paths = []
+    for _ in range(5):
+        p = create_sqlite_backup(db_url=f"sqlite:///{db_file}", backup_dir=str(backup_dir), retention=10)
+        paths.append(p)
+
+    # All paths must be unique
+    assert len(paths) == 5
+    assert len(set(paths)) == 5
+    # All files must physically exist on disk
+    for p in paths:
+        assert os.path.exists(p)
 
 
 def test_restore_rejects_corrupted_backup(tmp_path):

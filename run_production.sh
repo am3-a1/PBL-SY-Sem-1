@@ -21,22 +21,28 @@ echo -e "${GREEN}[1/4] Validating production configuration...${NC}"
 if [ "${ENVIRONMENT}" = "production" ]; then
     if [ -z "${FEEDPULSE_API_KEY:-}" ]; then
         echo -e "${RED}ERROR: FEEDPULSE_API_KEY environment variable is required in production mode.${NC}"
-        echo -e "Generate a secure random key (at least 16 characters) and export FEEDPULSE_API_KEY before running."
+        echo -e "Generate a secure random key using:"
+        echo -e "  python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+        echo -e "Then export it before running:"
+        echo -e "  export FEEDPULSE_API_KEY=\"<generated-key>\""
         exit 1
     fi
 
     # Check for known insecure default keys
-    INSECURE_KEYS="feedpulse-dev-secret-key secret password admin 123456 changeme development test"
+    INSECURE_KEYS="feedpulse-dev-secret-key secret password admin 123456 12345678 changeme development test"
     for BAD in $INSECURE_KEYS; do
         if [ "${FEEDPULSE_API_KEY}" = "$BAD" ]; then
             echo -e "${RED}ERROR: Insecure default or weak FEEDPULSE_API_KEY detected in production environment.${NC}"
-            echo -e "You must provide a dedicated, secure random secret key (minimum 16 characters)."
+            echo -e "Generate a secure random key using:"
+            echo -e "  python -c \"import secrets; print(secrets.token_urlsafe(32))\""
             exit 1
         fi
     done
 
     if [ ${#FEEDPULSE_API_KEY} -lt 16 ]; then
         echo -e "${RED}ERROR: FEEDPULSE_API_KEY is too short (${#FEEDPULSE_API_KEY} chars). Must be at least 16 characters in production.${NC}"
+        echo -e "Generate a secure random key using:"
+        echo -e "  python -c \"import secrets; print(secrets.token_urlsafe(32))\""
         exit 1
     fi
 fi
@@ -46,9 +52,14 @@ echo -e "${GREEN}[2/4] Checking frontend build...${NC}"
 cd "$PROJECT_ROOT/frontend"
 
 # Check if node_modules exists or package.json/package-lock.json is newer than stamp
-if [ ! -d "node_modules" ] || [ ! -f "node_modules/.installed" ] || [ "package.json" -nt "node_modules/.installed" ]; then
-    echo "Updating frontend dependencies..."
-    npm ci 2>/dev/null || npm install
+if [ ! -d "node_modules" ] || [ ! -f "node_modules/.installed" ] || [ "package.json" -nt "node_modules/.installed" ] || [ "package-lock.json" -nt "node_modules/.installed" ]; then
+    echo "Installing frontend dependencies with npm ci..."
+    if ! npm ci; then
+        echo -e "${RED}ERROR: 'npm ci' failed. Ensure package.json and package-lock.json are in sync.${NC}"
+        echo -e "To resolve, run in the frontend directory:"
+        echo -e "  cd frontend && npm install"
+        exit 1
+    fi
     touch "node_modules/.installed"
 fi
 

@@ -52,12 +52,30 @@ from config import settings, validate_slack_webhook_url, mask_slack_webhook
 logger = logging.getLogger("feedpulse.api")
 logging.basicConfig(level=logging.INFO)
 
-# Initialize DB tables with constraints
-models.Base.metadata.create_all(bind=engine)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings.validate_production_configuration()
+    logger.info(f"Configured CORS allowed origins: {settings.ALLOWED_ORIGINS}")
+    # Initialize default themes and alert config on startup if tables exist and are empty
+    db = database.SessionLocal()
+    try:
+        init_default_themes(db)
+        existing_alert = db.query(AlertConfig).first()
+        if not existing_alert:
+            config = AlertConfig(
+                slack_webhook_url=settings.DEFAULT_SLACK_WEBHOOK_URL,
+                negative_threshold_pct=settings.DEFAULT_NEGATIVE_THRESHOLD_PCT,
+                is_enabled=True,
+            )
+            db.add(config)
+            db.commit()
+    except Exception as exc:
+        logger.warning(f"Startup database initialization skipped or deferred: {exc}")
+        db.rollback()
+    finally:
+        db.close()
+
     logger.info(f"FeedPulse API started in {settings.ENVIRONMENT} mode.")
     yield
 
@@ -668,9 +686,8 @@ def clear_all_reviews(db: Session = Depends(get_db)):
 def list_themes(db: Session = Depends(get_db)):
     """
     Optimized: aggregates counts across themes in grouped database queries
-    instead of repeated N*3 queries.
+    instead of repeated N*3 queries. Strictly read-only without side-effects.
     """
-    init_default_themes(db)
     themes = db.query(Theme).all()
 
     # Query 1: Total counts per theme
@@ -982,7 +999,15 @@ def get_analytics_summary(db: Session = Depends(get_db)):
 
 @app.get("/api/alerts/config", response_model=AlertConfigResponse, summary="Get alert configuration")
 def get_alert_config(db: Session = Depends(get_db)):
-    config = get_or_create_alert_config(db)
+    config = db.query(AlertConfig).first()
+    if not config:
+        return AlertConfigResponse(
+            id=0,
+            slack_webhook_url="",
+            has_slack_webhook=False,
+            negative_threshold_pct=settings.DEFAULT_NEGATIVE_THRESHOLD_PCT,
+            is_enabled=False,
+        )
     has_webhook = bool(config.slack_webhook_url and config.slack_webhook_url.strip())
     masked_url = mask_slack_webhook(config.slack_webhook_url) if has_webhook else ""
     return AlertConfigResponse(

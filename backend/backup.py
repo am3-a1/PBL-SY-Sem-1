@@ -1,5 +1,6 @@
 import os
 import sys
+import uuid
 import sqlite3
 import logging
 import argparse
@@ -19,16 +20,21 @@ def create_sqlite_backup(
     """
     Creates an online, safe point-in-time backup of SQLite database using
     sqlite3's built-in backup API. Does not corrupt open transactions.
+    
+    Collision-resistant: uses microsecond timestamp and unique suffix.
+    Atomic: writes to temporary file and atomically moves upon verified integrity.
+    Retention: keep_count=0 disables pruning; positive N retains newest N backups.
+    The newly created backup is never pruned during its own creation operation.
     """
     url = db_url or settings.DATABASE_URL
     target_dir = backup_dir or settings.BACKUP_DIR
 
-    # Explicit check for None so retention=0 is not replaced by default
+    # Explicit check for None; 0 disables pruning, positive retains N
     if retention is not None:
         try:
             retention_count = int(retention)
             if retention_count < 0:
-                logger.warning(f"Negative retention '{retention}' provided; defaulting to 0.")
+                logger.warning(f"Negative retention '{retention}' provided; defaulting to 0 (no pruning).")
                 retention_count = 0
         except (ValueError, TypeError):
             logger.warning(
@@ -50,30 +56,45 @@ def create_sqlite_backup(
         raise FileNotFoundError(f"Source database file not found at {db_path}")
 
     os.makedirs(target_dir, exist_ok=True)
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    backup_filename = f"feedpulse_backup_{timestamp}.sqlite3"
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+    unique_suffix = uuid.uuid4().hex[:6]
+    backup_filename = f"feedpulse_backup_{timestamp}_{unique_suffix}.sqlite3"
+    tmp_path = os.path.join(target_dir, f"{backup_filename}.tmp")
     backup_path = os.path.join(target_dir, backup_filename)
 
     logger.info(f"Starting online SQLite backup from {db_path} to {backup_path}...")
 
-    # Use SQLite's online backup API
+    # Write to temporary file first using SQLite's online backup API
     source_conn = sqlite3.connect(db_path)
-    dest_conn = sqlite3.connect(backup_path)
+    dest_conn = sqlite3.connect(tmp_path)
     try:
         source_conn.backup(dest_conn, pages=250, sleep=0.01)
-        # Verify backup integrity
+        # Verify backup integrity before moving into place
         dest_cursor = dest_conn.cursor()
         dest_cursor.execute("PRAGMA integrity_check;")
         check_res = dest_cursor.fetchone()
         if not check_res or check_res[0] != "ok":
             raise RuntimeError(f"Backup failed SQLite integrity check: {check_res}")
-        logger.info(f"Backup created and verified successfully: {backup_path}")
+    except Exception:
+        # Clean up incomplete temporary file on failure
+        dest_conn.close()
+        source_conn.close()
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+        raise
     finally:
         dest_conn.close()
         source_conn.close()
 
-    # Retention policy: keep the newest N backups
-    cleanup_old_backups(target_dir, retention_count)
+    # Atomically move verified backup into place
+    os.replace(tmp_path, backup_path)
+    logger.info(f"Backup created and verified successfully: {backup_path}")
+
+    # Retention policy: keep the newest N backups (0 = disable pruning)
+    cleanup_old_backups(target_dir, retention_count, exclude_path=backup_path)
 
     return backup_path
 
@@ -83,7 +104,7 @@ def restore_sqlite_backup(
     target_db_url: Optional[str] = None,
 ) -> bool:
     """
-    Restores SQLite database from a specified backup file.
+    Restores SQLite database from a specified backup file as an offline maintenance operation.
     Validates backup integrity before and after restoration.
     """
     if not os.path.exists(backup_file_path):
@@ -113,7 +134,7 @@ def restore_sqlite_backup(
 
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
-    # Perform online restoration to the target database
+    # Perform restoration to the target database
     source_conn = sqlite3.connect(backup_file_path)
     dest_conn = sqlite3.connect(db_path)
     try:
@@ -131,12 +152,18 @@ def restore_sqlite_backup(
         source_conn.close()
 
 
-def cleanup_old_backups(backup_dir: str, keep_count: int) -> List[str]:
+def cleanup_old_backups(
+    backup_dir: str,
+    keep_count: int,
+    exclude_path: Optional[str] = None,
+) -> List[str]:
     """
     Cleans up old backups exceeding the retention count.
-    If keep_count <= 0, prunes all backups.
+    - If keep_count <= 0: pruning is disabled; retains all backups.
+    - If keep_count > 0: retains the newest keep_count backups.
+    - The file at exclude_path is never deleted.
     """
-    if not os.path.exists(backup_dir):
+    if keep_count <= 0 or not os.path.exists(backup_dir):
         return []
 
     files = [
@@ -147,20 +174,16 @@ def cleanup_old_backups(backup_dir: str, keep_count: int) -> List[str]:
     files.sort(key=os.path.getmtime, reverse=True)
 
     pruned = []
-    if keep_count <= 0:
-        targets = files
-    elif len(files) > keep_count:
-        targets = files[keep_count:]
-    else:
-        targets = []
-
-    for old_file in targets:
-        try:
-            os.remove(old_file)
-            pruned.append(old_file)
-            logger.info(f"Pruned backup per retention policy: {old_file}")
-        except Exception as e:
-            logger.warning(f"Failed to remove backup {old_file}: {e}")
+    if len(files) > keep_count:
+        for old_file in files[keep_count:]:
+            if exclude_path and os.path.abspath(old_file) == os.path.abspath(exclude_path):
+                continue
+            try:
+                os.remove(old_file)
+                pruned.append(old_file)
+                logger.info(f"Pruned old backup per retention policy: {old_file}")
+            except Exception as e:
+                logger.warning(f"Failed to remove backup {old_file}: {e}")
 
     return pruned
 
@@ -191,7 +214,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="FeedPulse SQLite Backup & Restore Utility")
     parser.add_argument("--restore", type=str, help="Path to backup file to restore")
     parser.add_argument("--list", action="store_true", help="List available backups")
-    parser.add_argument("--retention", type=int, default=None, help="Backup retention count override")
+    parser.add_argument("--retention", type=int, default=None, help="Backup retention count (0 to keep all)")
     args = parser.parse_args()
 
     if args.list:

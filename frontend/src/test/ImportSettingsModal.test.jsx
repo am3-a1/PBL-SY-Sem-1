@@ -1,9 +1,14 @@
 import React from 'react'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import ImportSettingsModal from '../components/ImportSettingsModal'
+import { getApiKey } from '../api/client'
 
 describe('ImportSettingsModal Component', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
   const mockAlertConfig = {
     id: 1,
     slack_webhook_url: 'https://hooks.slack.com/services/T1***/B2***/******',
@@ -22,7 +27,7 @@ describe('ImportSettingsModal Component', () => {
       />
     )
 
-    expect(screen.getByText('Import and alerts')).toBeInTheDocument()
+    expect(screen.getByText('Settings & Integrations')).toBeInTheDocument()
     expect(screen.getByText('Demo data')).toBeInTheDocument()
 
     fireEvent.keyDown(window, { key: 'Escape' })
@@ -44,6 +49,38 @@ describe('ImportSettingsModal Component', () => {
     expect(screen.getByText(/Negative feedback spike threshold/i)).toBeInTheDocument()
     expect(screen.getByText('30%')).toBeInTheDocument()
     expect(screen.getByText(/Active webhook configured/i)).toBeInTheDocument()
+  })
+
+  it('switches to API Key tab and allows configuring and clearing a key', () => {
+    render(
+      <ImportSettingsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        alertConfig={mockAlertConfig}
+      />
+    )
+
+    const keyTab = screen.getByRole('button', { name: /API Key/i })
+    fireEvent.click(keyTab)
+
+    expect(screen.getByText(/API Key Configuration/i)).toBeInTheDocument()
+    expect(screen.getByText('Not configured')).toBeInTheDocument()
+
+    // Enter and save a key
+    const input = screen.getByPlaceholderText(/Enter your FEEDPULSE_API_KEY/i)
+    fireEvent.change(input, { target: { value: 'my-new-secret-token-123' } })
+
+    const saveBtn = screen.getByRole('button', { name: /Save API Key/i })
+    fireEvent.click(saveBtn)
+
+    expect(getApiKey()).toBe('my-new-secret-token-123')
+    expect(screen.getByText('Configured')).toBeInTheDocument()
+
+    // Clear key
+    const clearBtn = screen.getByRole('button', { name: /Clear key/i })
+    fireEvent.click(clearBtn)
+    expect(getApiKey()).toBe('')
+    expect(screen.getByText('Not configured')).toBeInTheDocument()
   })
 
   it('requires confirmation before clearing database', async () => {

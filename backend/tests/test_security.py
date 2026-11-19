@@ -8,30 +8,33 @@ from main import verify_api_key
 
 
 def test_production_settings_validation():
-    # 1. Production without API key raises ValueError
+    # 1. Production without API key raises ValueError and includes generation hint
     prod_no_key = Settings()
     prod_no_key.ENVIRONMENT = "production"
     prod_no_key.IS_PRODUCTION = True
     prod_no_key.FEEDPULSE_API_KEY = ""
-    with pytest.raises(ValueError, match="FEEDPULSE_API_KEY must be explicitly configured"):
+    with pytest.raises(ValueError, match="FEEDPULSE_API_KEY must be explicitly configured") as exc_info:
         prod_no_key.validate_production_configuration()
+    assert "secrets.token_urlsafe(32)" in str(exc_info.value)
 
-    # 2. Production with weak/known key raises ValueError
+    # 2. Production with weak/known key raises ValueError and includes generation hint
     for bad_key in KNOWN_INSECURE_KEYS:
         prod_bad_key = Settings()
         prod_bad_key.ENVIRONMENT = "production"
         prod_bad_key.IS_PRODUCTION = True
         prod_bad_key.FEEDPULSE_API_KEY = bad_key
-        with pytest.raises(ValueError, match="known insecure development default"):
+        with pytest.raises(ValueError, match="known insecure development default") as exc_info:
             prod_bad_key.validate_production_configuration()
+        assert "secrets.token_urlsafe(32)" in str(exc_info.value)
 
-    # 3. Production with key shorter than 16 chars raises ValueError
+    # 3. Production with key shorter than 16 chars raises ValueError and includes hint
     prod_short_key = Settings()
     prod_short_key.ENVIRONMENT = "production"
     prod_short_key.IS_PRODUCTION = True
     prod_short_key.FEEDPULSE_API_KEY = "too-short-key"
-    with pytest.raises(ValueError, match="at least 16 characters long"):
+    with pytest.raises(ValueError, match="at least 16 characters long") as exc_info:
         prod_short_key.validate_production_configuration()
+    assert "secrets.token_urlsafe(32)" in str(exc_info.value)
 
     # 4. Production with strong key (>= 16 chars) succeeds
     prod_strong_key = Settings()
@@ -46,6 +49,41 @@ def test_production_settings_validation():
     dev_settings.IS_PRODUCTION = False
     dev_settings.FEEDPULSE_API_KEY = "feedpulse-dev-secret-key"
     dev_settings.validate_production_configuration()  # Should not raise
+
+
+def test_production_cors_validation():
+    # 1. Wildcard origin rejected in production
+    s = Settings()
+    s.ENVIRONMENT = "production"
+    s.IS_PRODUCTION = True
+    s.FEEDPULSE_API_KEY = "super-secret-random-prod-key-12345"
+    s.ALLOWED_ORIGINS = ["*"]
+    with pytest.raises(ValueError, match="Wildcard origin '\\*' is not permitted"):
+        s.validate_production_configuration()
+
+    # 2. Empty origins list rejected in production
+    s.ALLOWED_ORIGINS = []
+    with pytest.raises(ValueError, match="ALLOWED_ORIGINS cannot be empty"):
+        s.validate_production_configuration()
+
+    # 3. Missing scheme rejected
+    s.ALLOWED_ORIGINS = ["localhost:5173"]
+    with pytest.raises(ValueError, match="must include an http:// or https:// scheme"):
+        s.validate_production_configuration()
+
+    # 4. Origin with URL path rejected
+    s.ALLOWED_ORIGINS = ["https://feedpulse.example.com/api/v1"]
+    with pytest.raises(ValueError, match="must not include paths, query parameters"):
+        s.validate_production_configuration()
+
+    # 5. Origin with query or fragment rejected
+    s.ALLOWED_ORIGINS = ["https://feedpulse.example.com?foo=bar"]
+    with pytest.raises(ValueError, match="must not include paths, query parameters"):
+        s.validate_production_configuration()
+
+    # 6. Valid origins succeed
+    s.ALLOWED_ORIGINS = ["https://feedpulse.example.com", "http://localhost:5173", "http://127.0.0.1:3000"]
+    s.validate_production_configuration()  # Should not raise
 
 
 def test_constant_time_api_key_verification():
@@ -104,6 +142,7 @@ def test_production_launcher_rejects_insecure_config():
     assert res.returncode != 0
     out = res.stdout + res.stderr
     assert "FEEDPULSE_API_KEY environment variable is required" in out
+    assert "secrets.token_urlsafe(32)" in out
 
     # 2. Insecure default key
     env_insecure = os.environ.copy()
@@ -113,6 +152,7 @@ def test_production_launcher_rejects_insecure_config():
     assert res.returncode != 0
     out = res.stdout + res.stderr
     assert "Insecure default or weak FEEDPULSE_API_KEY detected" in out
+    assert "secrets.token_urlsafe(32)" in out
 
     # 3. Short key (< 16 chars)
     env_short = os.environ.copy()
@@ -122,3 +162,4 @@ def test_production_launcher_rejects_insecure_config():
     assert res.returncode != 0
     out = res.stdout + res.stderr
     assert "too short" in out
+    assert "secrets.token_urlsafe(32)" in out

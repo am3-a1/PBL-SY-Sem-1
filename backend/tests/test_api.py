@@ -1,6 +1,7 @@
 import pytest
 from datetime import datetime
 from models import Review, Theme, AlertConfig
+from main import init_default_themes
 
 
 def test_health_check(client):
@@ -214,7 +215,8 @@ def test_analytics_calculations(client, db_session):
 
 
 def test_theme_listing_and_escalate(client, auth_headers, db_session):
-    # Seed themes
+    # Explicitly seed themes for test
+    init_default_themes(db_session)
     res = client.get("/api/themes")
     assert res.status_code == 200
     themes = res.json()
@@ -276,3 +278,29 @@ def test_alert_config_and_webhook_protection(client, auth_headers):
     # Ensure webhook URL is masked in response
     assert "ZZZZZZZZZZZZZZZZZZZZZZZZ" not in resp_data["slack_webhook_url"]
     assert resp_data["negative_threshold_pct"] == 25.0
+
+
+def test_get_endpoints_do_not_write_to_database(client, db_session):
+    """
+    Verifies GET /api/themes and GET /api/alerts/config are strictly read-only
+    and perform zero database insertions or mutations when querying an empty DB.
+    """
+    # Verify DB is currently empty for themes and alert configs
+    assert db_session.query(Theme).count() == 0
+    assert db_session.query(AlertConfig).count() == 0
+
+    # 1. GET /api/themes on empty database
+    theme_res = client.get("/api/themes")
+    assert theme_res.status_code == 200
+    assert theme_res.json() == []
+    # Assert still 0 in DB
+    assert db_session.query(Theme).count() == 0
+
+    # 2. GET /api/alerts/config on empty database
+    alert_res = client.get("/api/alerts/config")
+    assert alert_res.status_code == 200
+    data = alert_res.json()
+    assert data["id"] == 0
+    assert data["has_slack_webhook"] is False
+    # Assert still 0 in DB
+    assert db_session.query(AlertConfig).count() == 0

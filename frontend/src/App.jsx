@@ -1,29 +1,31 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import { AlertCircle, X, Key } from 'lucide-react'
 import Header from './components/Header'
 import FilterBar from './components/FilterBar'
 import AnalyticsOverview from './components/AnalyticsOverview'
 import KanbanBoard from './components/KanbanBoard'
 import ImportSettingsModal from './components/ImportSettingsModal'
-import { X, AlertCircle } from 'lucide-react'
-import api from './api/client'
+import { api, ApiError } from './api/client'
 
 export default function App() {
+  // Navigation & Modal state
   const [activeTab, setActiveTab] = useState('analytics') // 'analytics' | 'kanban'
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [modalTab, setModalTab] = useState('data') // 'data' | 'slack' | 'key'
+
+  // Data state
   const [reviews, setReviews] = useState([])
   const [summary, setSummary] = useState(null)
   const [alertConfig, setAlertConfig] = useState(null)
-  const [isModalOpen, setIsModalOpen] = useState(false)
 
-  // Loading states
+  // Loading & Action states
   const [isLoading, setIsLoading] = useState(true)
-  const [isSeeding, setIsSeeding] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
-
-  // Feedback notifications
+  const [isSeeding, setIsSeeding] = useState(false)
   const [spikeAlert, setSpikeAlert] = useState(null)
-  const [appError, setAppError] = useState(null)
+  const [appError, setAppError] = useState(null) // { message: string, is401: boolean }
 
-  // Filters state
+  // Filter state
   const [filters, setFilters] = useState({
     source: 'All',
     sentiment: 'All',
@@ -31,19 +33,31 @@ export default function App() {
     search: '',
   })
 
-  // Fetch reviews from backend
+  const openModalWithTab = (tab = 'data') => {
+    setModalTab(tab)
+    setIsModalOpen(true)
+  }
+
+  const handleError = (err, fallbackMessage) => {
+    console.error(fallbackMessage, err)
+    const is401 = err?.status === 401
+    const message = is401
+      ? 'Authentication required: Your API key is missing or invalid. Please configure your API key to perform this action.'
+      : err?.message || fallbackMessage
+    setAppError({ message, is401 })
+  }
+
+  // Fetch reviews list
   const fetchReviews = async () => {
     try {
       const data = await api.getReviews({ limit: 500 })
-      setReviews(data)
-      setAppError(null)
+      setReviews(Array.isArray(data) ? data : data.items || [])
     } catch (err) {
       console.error('Failed to fetch reviews:', err)
-      setAppError(err.message || 'Failed to load reviews.')
     }
   }
 
-  // Fetch analytics summary from backend
+  // Fetch analytics summary
   const fetchSummary = async () => {
     try {
       const data = await api.getAnalyticsSummary()
@@ -101,8 +115,7 @@ export default function App() {
         })
       }
     } catch (err) {
-      console.error('Seeding failed:', err)
-      setAppError(err.message || 'Failed to load demo data.')
+      handleError(err, 'Failed to load demo data.')
     } finally {
       setIsSeeding(false)
     }
@@ -116,8 +129,7 @@ export default function App() {
       setSpikeAlert(null)
       setAppError(null)
     } catch (err) {
-      console.error('Clear failed:', err)
-      setAppError(err.message || 'Failed to clear database.')
+      handleError(err, 'Failed to clear database.')
     }
   }
 
@@ -134,10 +146,9 @@ export default function App() {
       await api.updateReviewStatus(reviewId, newStatus)
       fetchSummary()
     } catch (err) {
-      console.error('Status update failed:', err)
       // Revert to previous state on failure
       setReviews(previousReviews)
-      setAppError(`Failed to update review status: ${err.message}`)
+      handleError(err, `Failed to update review status: ${err.message}`)
     }
   }
 
@@ -178,7 +189,7 @@ export default function App() {
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onOpenModal={() => setIsModalOpen(true)}
+        onOpenModal={() => openModalWithTab('data')}
         onRefresh={handleRefresh}
         isRefreshing={isRefreshing}
         totalReviews={reviews.length}
@@ -188,12 +199,22 @@ export default function App() {
       {appError && (
         <div
           role="alert"
-          className="border-b border-line bg-surface px-4 py-2 text-xs border-l-4 border-l-negative flex items-center justify-between text-negative"
+          className="border-b border-line bg-surface px-4 py-2.5 text-xs border-l-4 border-l-negative flex items-center justify-between text-negative"
         >
           <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span className="font-medium">{appError}</span>
+              <span className="font-medium">{appError.message}</span>
+              {appError.is401 && (
+                <button
+                  type="button"
+                  onClick={() => openModalWithTab('key')}
+                  className="ml-2 font-semibold underline hover:text-ink flex items-center gap-1 cursor-pointer"
+                >
+                  <Key className="w-3 h-3" />
+                  Configure API Key
+                </button>
+              )}
             </div>
             <button
               type="button"
@@ -245,7 +266,7 @@ export default function App() {
             alertConfig={alertConfig}
             onSelectTheme={handleSelectTheme}
             onClearFilters={handleClearFilters}
-            onOpenModal={() => setIsModalOpen(true)}
+            onOpenModal={() => openModalWithTab('data')}
             isLoading={isLoading}
           />
         ) : (
@@ -261,6 +282,7 @@ export default function App() {
       <ImportSettingsModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
+        initialTab={modalTab}
         alertConfig={alertConfig}
         onUpdateAlertConfig={(newCfg) => setAlertConfig(newCfg)}
         onSeedData={handleSeedData}
