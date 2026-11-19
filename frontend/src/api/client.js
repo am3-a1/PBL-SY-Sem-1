@@ -5,8 +5,8 @@
  * timeout management, and API key authentication injection.
  *
  * Security Note:
- * Any client-side key (whether in localStorage or embedded via VITE_* env)
- * is visible to anyone with access to the client browser or bundle.
+ * Browser localStorage is the sole source for configuring the frontend API key.
+ * Secrets are never bundled into client-side Vite environment variables.
  * This client token acts as a shared API passphrase to protect destructive operations,
  * not as strong user authentication or multi-tenant session management.
  */
@@ -27,23 +27,6 @@ export function getApiKey() {
       return localKey.trim()
     }
   }
-  if (
-    typeof import.meta !== 'undefined' &&
-    import.meta.env &&
-    typeof import.meta.env.VITE_FEEDPULSE_API_KEY === 'string' &&
-    import.meta.env.VITE_FEEDPULSE_API_KEY.trim()
-  ) {
-    return import.meta.env.VITE_FEEDPULSE_API_KEY.trim()
-  }
-  if (
-    typeof import.meta !== 'undefined' &&
-    import.meta.env &&
-    typeof import.meta.env.VITE_API_KEY === 'string' &&
-    import.meta.env.VITE_API_KEY.trim()
-  ) {
-    return import.meta.env.VITE_API_KEY.trim()
-  }
-  // Strictly no silent fallback to known development default key
   return ''
 }
 
@@ -98,9 +81,13 @@ async function request(endpoint, options = {}) {
     if (!response.ok) {
       let errorMessage = `Request failed with status ${response.status}`
       if (typeof data === 'object' && data !== null) {
-        errorMessage = data.detail || data.message || errorMessage
-      } else if (typeof data === 'string' && data.length > 0) {
-        errorMessage = data
+        if (data.detail) {
+          errorMessage = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)
+        } else if (data.message) {
+          errorMessage = data.message
+        }
+      } else if (typeof data === 'string' && data.trim()) {
+        errorMessage = data.trim()
       }
       throw new ApiError(errorMessage, response.status, data)
     }
@@ -110,50 +97,62 @@ async function request(endpoint, options = {}) {
     if (err instanceof ApiError) {
       throw err
     }
-    // Network or abort errors
-    const isNetworkError = err.name === 'TypeError' && err.message.includes('fetch')
-    const message = isNetworkError
-      ? 'Backend service unavailable. Please check that the server is running on port 8000.'
-      : err.message || 'An unexpected network error occurred.'
-    throw new ApiError(message, null, err)
+    // Network or client errors (e.g. Failed to fetch)
+    const message = err.message ? err.message : 'Backend service unavailable. Please check your connection.'
+    throw new ApiError(
+      message.includes('Failed to fetch') || message.includes('NetworkError')
+        ? 'Backend service unavailable. Ensure the server is running.'
+        : message,
+      null,
+      err
+    )
   }
 }
 
 export const api = {
   // Reviews
-  getReviews: (params = {}) => {
+  async getReviews(params = {}) {
     const query = new URLSearchParams()
-    Object.entries(params).forEach(([key, val]) => {
-      if (val !== undefined && val !== null && val !== '') {
-        query.append(key, val)
-      }
-    })
+    if (params.source) query.set('source', params.source)
+    if (params.sentiment) query.set('sentiment', params.sentiment)
+    if (params.theme) query.set('theme', params.theme)
+    if (params.status) query.set('status', params.status)
+    if (params.search) query.set('search', params.search)
+    if (params.sort_by) query.set('sort_by', params.sort_by)
+    if (params.sort_order) query.set('sort_order', params.sort_order)
+    if (params.page) query.set('page', params.page)
+    if (params.page_size) query.set('page_size', params.page_size)
+
     const qs = query.toString()
     return request(`/api/reviews${qs ? `?${qs}` : ''}`)
   },
 
-  updateReviewStatus: (reviewId, newStatus) =>
-    request(`/api/reviews/${reviewId}/status`, {
+  async updateReviewStatus(reviewId, status) {
+    return request(`/api/reviews/${reviewId}/status`, {
       method: 'PATCH',
-      body: { status: newStatus },
-    }),
+      body: { status },
+    })
+  },
 
-  deleteReview: (reviewId) =>
-    request(`/api/reviews/${reviewId}`, {
+  async deleteReview(reviewId) {
+    return request(`/api/reviews/${reviewId}`, {
       method: 'DELETE',
-    }),
+    })
+  },
 
-  clearAllReviews: () =>
-    request('/api/reviews', {
+  async clearAllReviews() {
+    return request('/api/reviews', {
       method: 'DELETE',
-    }),
+    })
+  },
 
-  seedReviews: () =>
-    request('/api/reviews/seed', {
+  async seedMockReviews() {
+    return request('/api/reviews/seed', {
       method: 'POST',
-    }),
+    })
+  },
 
-  uploadCsv: (file) => {
+  async uploadCsv(file) {
     const formData = new FormData()
     formData.append('file', file)
     return request('/api/reviews/upload', {
@@ -162,28 +161,45 @@ export const api = {
     })
   },
 
-  // Analytics
-  getAnalyticsSummary: () => request('/api/analytics/summary'),
-
   // Themes
-  getThemes: () => request('/api/themes'),
-  escalateTheme: (themeId) => request(`/api/themes/${themeId}/escalate`, { method: 'POST' }),
+  async getThemes() {
+    return request('/api/themes')
+  },
+
+  async escalateTheme(themeId) {
+    return request(`/api/themes/${themeId}/escalate`, {
+      method: 'POST',
+    })
+  },
+
+  // Analytics
+  async getAnalyticsSummary(timeframe = '30d') {
+    return request(`/api/analytics/summary?timeframe=${encodeURIComponent(timeframe)}`)
+  },
 
   // Alerts
-  getAlertConfig: () => request('/api/alerts/config'),
-  updateAlertConfig: (payload) =>
-    request('/api/alerts/config', {
+  async getAlertConfig() {
+    return request('/api/alerts/config')
+  },
+
+  async updateAlertConfig(config) {
+    return request('/api/alerts/config', {
       method: 'PUT',
-      body: payload,
-    }),
-  testSlackAlert: (payload) =>
-    request('/api/alerts/test', {
+      body: config,
+    })
+  },
+
+  async sendTestAlert(data = {}) {
+    return request('/api/alerts/test', {
       method: 'POST',
-      body: payload,
-    }),
+      body: data,
+    })
+  },
 
   // Health
-  getHealth: () => request('/api/health'),
+  async getHealth() {
+    return request('/health')
+  },
 }
 
 export default api

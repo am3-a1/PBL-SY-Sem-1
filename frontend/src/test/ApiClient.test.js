@@ -7,16 +7,69 @@ describe('API Client', () => {
     localStorage.clear()
   })
 
-  it('sets and retrieves API key properly without silent fallback', () => {
+  it('handles missing key behavior by returning empty string without silent fallbacks', () => {
     // When no key is set, returns empty string (no hardcoded insecure fallback)
     expect(getApiKey()).toBe('')
     expect(hasApiKey()).toBe(false)
+  })
 
-    setApiKey('custom-test-key')
-    expect(getApiKey()).toBe('custom-test-key')
+  it('persists configured API key in localStorage', () => {
+    setApiKey('custom-test-key-123')
+    expect(getApiKey()).toBe('custom-test-key-123')
     expect(hasApiKey()).toBe(true)
+    expect(localStorage.getItem('feedpulse_api_key')).toBe('custom-test-key-123')
+  })
 
+  it('replaces existing API key with a new key in localStorage and updates immediately', () => {
+    setApiKey('first-key-abc')
+    expect(getApiKey()).toBe('first-key-abc')
+    expect(localStorage.getItem('feedpulse_api_key')).toBe('first-key-abc')
+
+    // Replace key
+    setApiKey('second-key-xyz')
+    expect(getApiKey()).toBe('second-key-xyz')
+    expect(localStorage.getItem('feedpulse_api_key')).toBe('second-key-xyz')
+  })
+
+  it('clearing key genuinely removes it from localStorage and updates subsequent requests', async () => {
+    let capturedHeaders = null
+    global.fetch = vi.fn().mockImplementation((url, opts) => {
+      capturedHeaders = opts.headers
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: { get: () => 'application/json' },
+        json: async () => ([]),
+      })
+    })
+
+    // 1. Set key and make request
+    setApiKey('temp-active-key')
+    await api.getReviews()
+    expect(capturedHeaders['X-API-Key']).toBe('temp-active-key')
+
+    // 2. Clear key with empty string
     setApiKey('')
+    expect(getApiKey()).toBe('')
+    expect(hasApiKey()).toBe(false)
+    expect(localStorage.getItem('feedpulse_api_key')).toBeNull()
+
+    // 3. Subsequent request MUST NOT include X-API-Key header
+    capturedHeaders = null
+    await api.getReviews()
+    expect(capturedHeaders['X-API-Key']).toBeUndefined()
+
+    // 4. Test clearing with null or whitespace
+    setApiKey('another-key')
+    expect(getApiKey()).toBe('another-key')
+    setApiKey('   ')
+    expect(getApiKey()).toBe('')
+    expect(localStorage.getItem('feedpulse_api_key')).toBeNull()
+  })
+
+  it('uses localStorage as sole source and does not fallback to VITE_* variables', () => {
+    // Even if import.meta.env has a VITE_FEEDPULSE_API_KEY set, getApiKey ignores it
+    localStorage.clear()
     expect(getApiKey()).toBe('')
     expect(hasApiKey()).toBe(false)
   })

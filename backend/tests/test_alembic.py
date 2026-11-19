@@ -207,3 +207,82 @@ def test_legacy_database_with_existing_theme_confidence(alembic_cfg, tmp_path):
     cursor.execute("SELECT author, theme_confidence FROM reviews;")
     assert cursor.fetchone() == ("Pre-existing User", 0.85)
     conn.close()
+
+
+def test_legacy_database_with_existing_metadata_table(alembic_cfg, tmp_path):
+    """
+    Scenario 4:
+    Legacy database where _alembic_migration_metadata ALREADY existed before migration.
+    Upgrade should preserve existing metadata rows and perform required schema upgrades.
+    Downgrade must PRESERVE _alembic_migration_metadata and its original contents because
+    this migration did not create the table!
+    """
+    db_file = tmp_path / f"legacy_meta_{uuid.uuid4().hex}.db"
+    conn = sqlite3.connect(str(db_file))
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE _alembic_migration_metadata (
+            key VARCHAR(100) PRIMARY KEY,
+            value VARCHAR(100) NOT NULL
+        );
+    """)
+    cursor.execute(
+        "INSERT INTO _alembic_migration_metadata (key, value) VALUES ('legacy_custom_key', 'custom_value_123');"
+    )
+    cursor.execute("""
+        CREATE TABLE reviews (
+            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            source VARCHAR(50) NOT NULL,
+            author VARCHAR(100) NOT NULL,
+            rating INTEGER,
+            content TEXT NOT NULL,
+            created_at DATETIME,
+            sentiment_score FLOAT NOT NULL,
+            sentiment_label VARCHAR(20) NOT NULL,
+            category_theme VARCHAR(50) NOT NULL,
+            status VARCHAR(50) NOT NULL
+        );
+    """)
+    cursor.execute(
+        "INSERT INTO reviews (source, author, rating, content, sentiment_score, sentiment_label, category_theme, status) "
+        "VALUES ('Google Play', 'Legacy Meta User', 2, 'Needs update', -0.3, 'Negative', 'General', 'New');"
+    )
+    conn.commit()
+    conn.close()
+
+    db_url = f"sqlite:///{db_file}"
+    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+
+    # 1. Upgrade
+    command.upgrade(alembic_cfg, "head")
+
+    conn = sqlite3.connect(str(db_file))
+    cursor = conn.cursor()
+    # Check that pre-existing metadata key is intact
+    cursor.execute("SELECT value FROM _alembic_migration_metadata WHERE key = 'legacy_custom_key';")
+    assert cursor.fetchone() == ("custom_value_123",)
+    # Check that theme_confidence was added
+    cursor.execute("PRAGMA table_info(reviews);")
+    cols = {row[1] for row in cursor.fetchall()}
+    assert "theme_confidence" in cols
+    conn.close()
+
+    # 2. Downgrade
+    command.downgrade(alembic_cfg, "base")
+
+    conn = sqlite3.connect(str(db_file))
+    cursor = conn.cursor()
+    # _alembic_migration_metadata MUST still exist
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    tables_after = {row[0] for row in cursor.fetchall()}
+    assert "_alembic_migration_metadata" in tables_after
+    assert "reviews" in tables_after
+
+    # Original metadata key/value MUST be preserved
+    cursor.execute("SELECT value FROM _alembic_migration_metadata WHERE key = 'legacy_custom_key';")
+    assert cursor.fetchone() == ("custom_value_123",)
+
+    # Original user review MUST be preserved
+    cursor.execute("SELECT author, content FROM reviews;")
+    assert cursor.fetchone() == ("Legacy Meta User", "Needs update")
+    conn.close()

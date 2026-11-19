@@ -44,6 +44,7 @@ def upgrade() -> None:
             sa.Column("key", sa.String(length=100), primary_key=True),
             sa.Column("value", sa.String(length=100), nullable=False),
         )
+        op.bulk_insert(meta_table, [{"key": "created_metadata_table", "value": "1"}])
 
     # 1. alert_configs table
     if "alert_configs" not in existing_tables:
@@ -191,6 +192,19 @@ def downgrade() -> None:
     if actions.get("created_alert_configs") == "1" and "alert_configs" in existing_tables:
         op.drop_table("alert_configs")
 
-    # 3. Clean up metadata tracking table
-    if METADATA_TABLE in existing_tables:
+    # 3. Clean up metadata tracking table ONLY if this migration created it
+    if actions.get("created_metadata_table") == "1" and METADATA_TABLE in existing_tables:
         op.drop_table(METADATA_TABLE)
+    elif METADATA_TABLE in existing_tables:
+        # Pre-existing metadata table: remove only the keys inserted by this migration
+        keys_to_clean = [
+            "created_reviews",
+            "created_themes",
+            "created_alert_configs",
+            "added_theme_confidence",
+            "created_metadata_table",
+        ]
+        try:
+            conn.execute(meta_table.delete().where(meta_table.c.key.in_(keys_to_clean)))
+        except Exception:
+            pass

@@ -58,7 +58,8 @@ async def lifespan(app: FastAPI):
     settings.validate_production_configuration()
     logger.info(f"Configured CORS allowed origins: {settings.ALLOWED_ORIGINS}")
     # Initialize default themes and alert config on startup if tables exist and are empty
-    db = database.SessionLocal()
+    session_factory = getattr(app.state, "db_session_factory", None) or database.SessionLocal
+    db = session_factory()
     try:
         init_default_themes(db)
         existing_alert = db.query(AlertConfig).first()
