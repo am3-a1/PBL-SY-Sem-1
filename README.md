@@ -366,8 +366,8 @@ cd backend
 ./venv/bin/pytest -v tests/
 ```
 
-Coverage (42 tests) includes:
-- **Alembic:** Fresh database migration, legacy migration with data preservation, reversible downgrade safety, and re-upgrade.
+Coverage (46 tests) includes:
+- **Alembic:** Fresh database migration, legacy migration with data preservation, pre-existing metadata and key collision safety, reversible downgrade safety, and re-upgrade.
 - **Security:** Production configuration validation, constant-time `secrets.compare_digest` comparison, authentication headers (`X-API-Key`, `Authorization: Bearer`), production CORS origin validation, and production launcher checks.
 - **Import Safety:** Proves that importing the application module does not create database tables or schemas outside of Alembic.
 - **Read-Only Endpoints:** Proves that `GET /api/themes` and `GET /api/alerts/config` execute zero database writes.
@@ -383,11 +383,11 @@ cd frontend
 npm run test
 ```
 
-Coverage (15 tests across 5 suites) includes:
+Coverage (22 tests across 5 suites) includes:
 - API client authentication injection, explicit handling of missing keys without silent dev fallback, and network error extraction.
 - Review card rendering, keyboard accessibility (Enter/Space), and screen reader attributes.
 - Filter bar dropdowns, keyword search input, and counters.
-- Modal tabs, API key configuration (saving, clearing, masking, tab navigation), asynchronous alert config synchronization, and database clear confirmations.
+- Modal tabs, API key configuration (saving, clearing, masking, tab navigation), seed reviews API workflow, asynchronous alert config synchronization, and database clear confirmations.
 - Theme switcher state cycling.
 
 ---

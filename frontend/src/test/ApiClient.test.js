@@ -112,4 +112,45 @@ describe('API Client', () => {
     await api.getReviews()
     expect(capturedHeaders['X-API-Key']).toBe('my-secret-token')
   })
+
+  it('invokes POST /api/reviews/seed via seedReviews() and alias seedMockReviews()', async () => {
+    let capturedUrl = null
+    let capturedOpts = null
+    global.fetch = vi.fn().mockImplementation((url, opts) => {
+      capturedUrl = url
+      capturedOpts = opts
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: { get: () => 'application/json' },
+        json: async () => ({ total_seeded: 65, alert_triggered: false }),
+      })
+    })
+
+    setApiKey('seed-test-key')
+
+    // 1. Primary method
+    const res1 = await api.seedReviews()
+    expect(capturedUrl).toBe('/api/reviews/seed')
+    expect(capturedOpts.method).toBe('POST')
+    expect(capturedOpts.headers['X-API-Key']).toBe('seed-test-key')
+    expect(res1.total_seeded).toBe(65)
+
+    // 2. Backward compatibility alias
+    const res2 = await api.seedMockReviews()
+    expect(capturedUrl).toBe('/api/reviews/seed')
+    expect(capturedOpts.method).toBe('POST')
+    expect(res2.total_seeded).toBe(65)
+  })
+
+  it('handles seedReviews failure with ApiError', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ detail: 'Invalid or missing API key.' }),
+    })
+
+    await expect(api.seedReviews()).rejects.toThrow('Invalid or missing API key.')
+  })
 })

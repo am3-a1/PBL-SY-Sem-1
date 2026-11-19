@@ -163,3 +163,92 @@ def test_production_launcher_rejects_insecure_config():
     out = res.stdout + res.stderr
     assert "too short" in out
     assert "secrets.token_urlsafe(32)" in out
+
+
+def test_production_launcher_loads_key_from_dotenv_file():
+    import subprocess
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    script_path = os.path.join(root_dir, "run_production.sh")
+    backend_env_path = os.path.join(root_dir, "backend", ".env")
+
+    # Create temporary backend/.env with valid key
+    valid_key = "super-secret-from-dotenv-file-99999"
+    env_content = f"FEEDPULSE_API_KEY={valid_key}\n"
+
+    existed_before = os.path.exists(backend_env_path)
+    original_content = None
+    if existed_before:
+        with open(backend_env_path, "r") as f:
+            original_content = f.read()
+
+    try:
+        with open(backend_env_path, "w") as f:
+            f.write(env_content)
+
+        env_run = os.environ.copy()
+        env_run["ENVIRONMENT"] = "production"
+        env_run.pop("FEEDPULSE_API_KEY", None)
+
+        # Run script up to end of step 1 validation
+        check_cmd = (
+            f"bash -c 'source <(sed \"/Checking frontend build/q\" \"{script_path}\")'"
+        )
+        res = subprocess.run(
+            check_cmd,
+            shell=True,
+            env=env_run,
+            capture_output=True,
+            text=True,
+            cwd=root_dir,
+        )
+        assert res.returncode == 0, f"Launcher failed with .env key: {res.stderr}\nStdout: {res.stdout}"
+    finally:
+        if existed_before:
+            with open(backend_env_path, "w") as f:
+                f.write(original_content)
+        else:
+            if os.path.exists(backend_env_path):
+                os.remove(backend_env_path)
+
+
+def test_production_launcher_shell_env_overrides_dotenv():
+    import subprocess
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    script_path = os.path.join(root_dir, "run_production.sh")
+    root_env_path = os.path.join(root_dir, ".env")
+
+    # In .env: insecure weak key
+    # In shell env: strong valid key
+    existed_before = os.path.exists(root_env_path)
+    original_content = None
+    if existed_before:
+        with open(root_env_path, "r") as f:
+            original_content = f.read()
+
+    try:
+        with open(root_env_path, "w") as f:
+            f.write("FEEDPULSE_API_KEY=weak-short-key\n")
+
+        env_run = os.environ.copy()
+        env_run["ENVIRONMENT"] = "production"
+        env_run["FEEDPULSE_API_KEY"] = "strong-shell-override-key-12345"
+
+        check_cmd = (
+            f"bash -c 'source <(sed \"/Checking frontend build/q\" \"{script_path}\")'"
+        )
+        res = subprocess.run(
+            check_cmd,
+            shell=True,
+            env=env_run,
+            capture_output=True,
+            text=True,
+            cwd=root_dir,
+        )
+        assert res.returncode == 0, f"Shell override failed: {res.stderr}\nStdout: {res.stdout}"
+    finally:
+        if existed_before:
+            with open(root_env_path, "w") as f:
+                f.write(original_content)
+        else:
+            if os.path.exists(root_env_path):
+                os.remove(root_env_path)

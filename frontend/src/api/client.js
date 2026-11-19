@@ -146,10 +146,14 @@ export const api = {
     })
   },
 
-  async seedMockReviews() {
+  async seedReviews() {
     return request('/api/reviews/seed', {
       method: 'POST',
     })
+  },
+
+  async seedMockReviews() {
+    return this.seedReviews()
   },
 
   async uploadCsv(file) {

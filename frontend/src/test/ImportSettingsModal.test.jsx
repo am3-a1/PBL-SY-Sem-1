@@ -106,4 +106,39 @@ describe('ImportSettingsModal Component', () => {
 
     expect(onClearAll).toHaveBeenCalled()
   })
+
+  it('triggers onSeedData when clicking the seed data button and displays loading state', () => {
+    const onSeedData = vi.fn()
+    const { rerender } = render(
+      <ImportSettingsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        alertConfig={mockAlertConfig}
+        onSeedData={onSeedData}
+        isSeeding={false}
+      />
+    )
+
+    const seedBtn = screen.getByRole('button', { name: /Load demo data/i })
+    expect(seedBtn).toBeInTheDocument()
+    expect(seedBtn).not.toBeDisabled()
+
+    fireEvent.click(seedBtn)
+    expect(onSeedData).toHaveBeenCalledTimes(1)
+
+    // Re-render with isSeeding=true
+    rerender(
+      <ImportSettingsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        alertConfig={mockAlertConfig}
+        onSeedData={onSeedData}
+        isSeeding={true}
+      />
+    )
+
+    expect(screen.getByText(/Loading demo data\.\.\./i)).toBeInTheDocument()
+    const disabledBtn = screen.getByRole('button', { name: /Loading demo data\.\.\./i })
+    expect(disabledBtn).toBeDisabled()
+  })
 })

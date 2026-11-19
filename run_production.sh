@@ -11,6 +11,37 @@ NC='\033[0m' # No Color
 echo -e "${BLUE}=== Starting FeedPulse (Production Launcher) ===${NC}"
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Safe .env file loader for key-value pairs (does not use unsafe shell source or execute code)
+load_env_file() {
+    local env_file="$1"
+    if [ -f "$env_file" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            line="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+            if [ -z "$line" ] || [[ "$line" == \#* ]] || [[ "$line" != *"="* ]]; then
+                continue
+            fi
+            local key="${line%%=*}"
+            local value="${line#*=}"
+            key="$(echo "$key" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+            value="$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+            if [[ "$value" =~ ^\".*\"$ ]] || [[ "$value" =~ ^\'.*\'$ ]]; then
+                value="${value:1:${#value}-2}"
+            fi
+            if [[ "$key" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+                if [ -z "${!key+x}" ]; then
+                    export "$key=$value"
+                fi
+            fi
+        done < "$env_file"
+    fi
+}
+
+# Load configuration from supported .env locations (backend/.env, then project root .env)
+# Shell environment variables already present always take precedence
+load_env_file "$PROJECT_ROOT/backend/.env"
+load_env_file "$PROJECT_ROOT/.env"
+
 export ENVIRONMENT="${ENVIRONMENT:-production}"
 export HOST="${HOST:-0.0.0.0}"
 export PORT="${PORT:-8000}"
@@ -23,7 +54,7 @@ if [ "${ENVIRONMENT}" = "production" ]; then
         echo -e "${RED}ERROR: FEEDPULSE_API_KEY environment variable is required in production mode.${NC}"
         echo -e "Generate a secure random key using:"
         echo -e "  python -c \"import secrets; print(secrets.token_urlsafe(32))\""
-        echo -e "Then export it before running:"
+        echo -e "Then export it before running or configure it in backend/.env or .env:"
         echo -e "  export FEEDPULSE_API_KEY=\"<generated-key>\""
         exit 1
     fi

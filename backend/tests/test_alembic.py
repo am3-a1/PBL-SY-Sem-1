@@ -286,3 +286,135 @@ def test_legacy_database_with_existing_metadata_table(alembic_cfg, tmp_path):
     cursor.execute("SELECT author, content FROM reviews;")
     assert cursor.fetchone() == ("Legacy Meta User", "Needs update")
     conn.close()
+
+
+def test_legacy_database_with_all_colliding_metadata_keys(alembic_cfg, tmp_path):
+    """
+    Scenario 5:
+    Legacy database containing pre-existing metadata rows for EVERY generic key
+    AND every revision-scoped key.
+    Verifies:
+    1. Upgrade succeeds without primary key violation or crashing on collisions.
+    2. Pre-existing user review records and table schemas are preserved.
+    3. Downgrade restores EVERY pre-existing metadata key to its exact original value.
+    4. Downgrade does not drop pre-existing tables or metadata table.
+    5. Re-upgrade after downgrade succeeds cleanly.
+    """
+    db_file = tmp_path / f"legacy_colliding_{uuid.uuid4().hex}.db"
+    conn = sqlite3.connect(str(db_file))
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE _alembic_migration_metadata (
+            key VARCHAR(100) PRIMARY KEY,
+            value VARCHAR(100) NOT NULL
+        );
+    """)
+
+    preexisting_metadata = {
+        "created_reviews": "preexisting_generic_reviews_value",
+        "created_themes": "preexisting_generic_themes_value",
+        "created_alert_configs": "preexisting_generic_alerts_value",
+        "added_theme_confidence": "preexisting_generic_conf_value",
+        "created_metadata_table": "preexisting_generic_meta_value",
+        "rev_7051498a93a1:created_reviews": "preexisting_scoped_reviews_value",
+        "rev_7051498a93a1:created_themes": "preexisting_scoped_themes_value",
+        "rev_7051498a93a1:created_alert_configs": "preexisting_scoped_alerts_value",
+        "rev_7051498a93a1:added_theme_confidence": "preexisting_scoped_conf_value",
+        "rev_7051498a93a1:created_metadata_table": "preexisting_scoped_meta_value",
+        "unrelated_app_setting": "unrelated_app_value_999",
+    }
+
+    for k, v in preexisting_metadata.items():
+        cursor.execute(
+            "INSERT INTO _alembic_migration_metadata (key, value) VALUES (?, ?);",
+            (k, v),
+        )
+
+    # Legacy reviews table
+    cursor.execute("""
+        CREATE TABLE reviews (
+            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            source VARCHAR(50) NOT NULL,
+            author VARCHAR(100) NOT NULL,
+            rating INTEGER,
+            content TEXT NOT NULL,
+            created_at DATETIME,
+            sentiment_score FLOAT NOT NULL,
+            sentiment_label VARCHAR(20) NOT NULL,
+            category_theme VARCHAR(50) NOT NULL,
+            status VARCHAR(50) NOT NULL
+        );
+    """)
+    cursor.execute(
+        "INSERT INTO reviews (source, author, rating, content, sentiment_score, sentiment_label, category_theme, status) "
+        "VALUES ('Reddit', 'Collision User', 4, 'Great work', 0.6, 'Positive', 'General', 'New');"
+    )
+    conn.commit()
+    conn.close()
+
+    db_url = f"sqlite:///{db_file}"
+    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+
+    # 1. Upgrade against colliding database
+    command.upgrade(alembic_cfg, "head")
+
+    conn = sqlite3.connect(str(db_file))
+    cursor = conn.cursor()
+    # reviews table must have theme_confidence added
+    cursor.execute("PRAGMA table_info(reviews);")
+    cols = {row[1] for row in cursor.fetchall()}
+    assert "theme_confidence" in cols
+    # legacy review row preserved
+    cursor.execute("SELECT author, content FROM reviews;")
+    assert cursor.fetchone() == ("Collision User", "Great work")
+    # generic keys were never touched
+    for k in ["created_reviews", "created_themes", "created_alert_configs", "added_theme_confidence", "created_metadata_table", "unrelated_app_setting"]:
+        cursor.execute("SELECT value FROM _alembic_migration_metadata WHERE key = ?;", (k,))
+        assert cursor.fetchone() == (preexisting_metadata[k],)
+    conn.close()
+
+    # 2. Downgrade
+    command.downgrade(alembic_cfg, "base")
+
+    conn = sqlite3.connect(str(db_file))
+    cursor = conn.cursor()
+    # reviews table and metadata table must still exist
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    tables = {row[0] for row in cursor.fetchall()}
+    assert "reviews" in tables
+    assert "_alembic_migration_metadata" in tables
+
+    # theme_confidence should be removed (as it was added by this migration)
+    cursor.execute("PRAGMA table_info(reviews);")
+    cols_after = {row[1] for row in cursor.fetchall()}
+    assert "theme_confidence" not in cols_after
+
+    # Legacy review row preserved
+    cursor.execute("SELECT author, content FROM reviews;")
+    assert cursor.fetchone() == ("Collision User", "Great work")
+
+    # Verify EVERY pre-existing metadata entry has been restored to its EXACT original value
+    for k, v in preexisting_metadata.items():
+        cursor.execute("SELECT value FROM _alembic_migration_metadata WHERE key = ?;", (k,))
+        row = cursor.fetchone()
+        assert row is not None, f"Metadata key '{k}' was lost during downgrade!"
+        assert row[0] == v, f"Metadata key '{k}' value mismatch: expected '{v}', got '{row[0]}'"
+
+    # No __orig__ temporary keys left behind
+    cursor.execute("SELECT key FROM _alembic_migration_metadata WHERE key LIKE '%__orig__';")
+    orig_keys = cursor.fetchall()
+    assert len(orig_keys) == 0, f"Dangling backup keys found: {orig_keys}"
+    conn.close()
+
+    # 3. Re-upgrade after downgrade succeeds
+    command.upgrade(alembic_cfg, "head")
+
+    conn = sqlite3.connect(str(db_file))
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(reviews);")
+    cols_reupgrade = {row[1] for row in cursor.fetchall()}
+    assert "theme_confidence" in cols_reupgrade
+    cursor.execute("SELECT author, content FROM reviews;")
+    assert cursor.fetchone() == ("Collision User", "Great work")
+    conn.close()
