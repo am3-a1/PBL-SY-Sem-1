@@ -1,7 +1,16 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Float,
+    Boolean,
+    DateTime,
+    Text,
+    CheckConstraint,
+)
 from database import Base
 
 
@@ -17,7 +26,27 @@ class Review(Base):
     sentiment_score = Column(Float, nullable=False)  # -1.0 to 1.0
     sentiment_label = Column(String(20), nullable=False, index=True)  # 'Positive', 'Neutral', 'Negative'
     category_theme = Column(String(50), nullable=False, index=True)  # 'Login Crash', 'Billing & Payments', etc.
+    theme_confidence = Column(Float, nullable=True, default=1.0)  # 0.0 to 1.0
     status = Column(String(50), default="New", nullable=False, index=True)  # 'New', 'Investigating', 'Escalated', 'Resolved'
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('New', 'Investigating', 'Escalated', 'Resolved')",
+            name="check_review_status",
+        ),
+        CheckConstraint(
+            "sentiment_label IN ('Positive', 'Neutral', 'Negative')",
+            name="check_sentiment_label",
+        ),
+        CheckConstraint(
+            "source IN ('App Store', 'Google Play', 'Reddit', 'Discord')",
+            name="check_source",
+        ),
+        CheckConstraint(
+            "rating IS NULL OR (rating >= 1 AND rating <= 5)",
+            name="check_rating_range",
+        ),
+    )
 
 
 class AlertConfig(Base):
@@ -40,7 +69,10 @@ class Theme(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+# ---------------------------------------------------------
 # Pydantic Schemas
+# ---------------------------------------------------------
+
 class ReviewBase(BaseModel):
     source: str
     author: str
@@ -68,11 +100,19 @@ class ReviewResponse(BaseModel):
     sentiment_score: float
     sentiment_label: str
     category_theme: str
+    theme_confidence: Optional[float] = 1.0
     status: str
 
 
+class PaginatedReviewResponse(BaseModel):
+    items: List[ReviewResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 class AlertConfigBase(BaseModel):
-    slack_webhook_url: Optional[str] = None
     negative_threshold_pct: float = 30.0
     is_enabled: bool = True
 
@@ -81,6 +121,8 @@ class AlertConfigResponse(AlertConfigBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    slack_webhook_url: Optional[str] = None  # Masked when returned
+    has_slack_webhook: bool = False
 
 
 class AlertConfigUpdate(BaseModel):
@@ -148,3 +190,14 @@ class ThemeEscalateResponse(BaseModel):
     theme_name: str
     escalated_count: int
     message: str
+
+
+class CsvImportSummary(BaseModel):
+    message: str
+    total_rows_processed: int
+    successful_imports: int
+    skipped_rows: int
+    failed_rows: int
+    reasons: List[str] = Field(default_factory=list)
+    alert_triggered: bool = False
+    alert_details: Optional[Dict[str, Any]] = None

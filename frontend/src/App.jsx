@@ -4,7 +4,8 @@ import FilterBar from './components/FilterBar'
 import AnalyticsOverview from './components/AnalyticsOverview'
 import KanbanBoard from './components/KanbanBoard'
 import ImportSettingsModal from './components/ImportSettingsModal'
-import { X } from 'lucide-react'
+import { X, AlertCircle } from 'lucide-react'
+import api from './api/client'
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('analytics') // 'analytics' | 'kanban'
@@ -18,8 +19,9 @@ export default function App() {
   const [isSeeding, setIsSeeding] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
-  // Banner alert notification (e.g., negative spike alert)
+  // Feedback notifications
   const [spikeAlert, setSpikeAlert] = useState(null)
+  const [appError, setAppError] = useState(null)
 
   // Filters state
   const [filters, setFilters] = useState({
@@ -32,24 +34,20 @@ export default function App() {
   // Fetch reviews from backend
   const fetchReviews = async () => {
     try {
-      const res = await fetch('/api/reviews?limit=500')
-      if (res.ok) {
-        const data = await res.json()
-        setReviews(data)
-      }
+      const data = await api.getReviews({ limit: 500 })
+      setReviews(data)
+      setAppError(null)
     } catch (err) {
       console.error('Failed to fetch reviews:', err)
+      setAppError(err.message || 'Failed to load reviews.')
     }
   }
 
   // Fetch analytics summary from backend
   const fetchSummary = async () => {
     try {
-      const res = await fetch('/api/analytics/summary')
-      if (res.ok) {
-        const data = await res.json()
-        setSummary(data)
-      }
+      const data = await api.getAnalyticsSummary()
+      setSummary(data)
     } catch (err) {
       console.error('Failed to fetch summary:', err)
     }
@@ -58,11 +56,8 @@ export default function App() {
   // Fetch alert configuration
   const fetchAlertConfig = async () => {
     try {
-      const res = await fetch('/api/alerts/config')
-      if (res.ok) {
-        const data = await res.json()
-        setAlertConfig(data)
-      }
+      const data = await api.getAlertConfig()
+      setAlertConfig(data)
     } catch (err) {
       console.error('Failed to fetch alert config:', err)
     }
@@ -72,8 +67,11 @@ export default function App() {
   useEffect(() => {
     const initialize = async () => {
       setIsLoading(true)
-      await Promise.all([fetchReviews(), fetchSummary(), fetchAlertConfig()])
-      setIsLoading(false)
+      try {
+        await Promise.all([fetchReviews(), fetchSummary(), fetchAlertConfig()])
+      } finally {
+        setIsLoading(false)
+      }
     }
     initialize()
   }, [])
@@ -81,28 +79,30 @@ export default function App() {
   // Manual refresh
   const handleRefresh = async () => {
     setIsRefreshing(true)
-    await Promise.all([fetchReviews(), fetchSummary()])
-    setIsRefreshing(false)
+    try {
+      await Promise.all([fetchReviews(), fetchSummary()])
+    } finally {
+      setIsRefreshing(false)
+    }
   }
 
   // Seed demo data handler
   const handleSeedData = async () => {
     setIsSeeding(true)
     setSpikeAlert(null)
+    setAppError(null)
     try {
-      const res = await fetch('/api/reviews/seed', { method: 'POST' })
-      const data = await res.json()
-      if (res.ok) {
-        await Promise.all([fetchReviews(), fetchSummary()])
-        if (data.alert_triggered) {
-          const negCount = Math.round((data.negative_percentage / 100) * data.total_seeded)
-          setSpikeAlert({
-            message: `Spike alert sent to Slack. ${negCount} of ${data.total_seeded} new reviews are negative (${data.negative_percentage}%).`,
-          })
-        }
+      const data = await api.seedReviews()
+      await Promise.all([fetchReviews(), fetchSummary()])
+      if (data.alert_triggered) {
+        const negCount = Math.round((data.negative_percentage / 100) * data.total_seeded)
+        setSpikeAlert({
+          message: `Spike alert sent to Slack. ${negCount} of ${data.total_seeded} new reviews are negative (${data.negative_percentage}%).`,
+        })
       }
     } catch (err) {
       console.error('Seeding failed:', err)
+      setAppError(err.message || 'Failed to load demo data.')
     } finally {
       setIsSeeding(false)
     }
@@ -111,38 +111,33 @@ export default function App() {
   // Clear all reviews handler
   const handleClearAll = async () => {
     try {
-      const res = await fetch('/api/reviews', { method: 'DELETE' })
-      if (res.ok) {
-        await Promise.all([fetchReviews(), fetchSummary()])
-        setSpikeAlert(null)
-      }
+      await api.clearAllReviews()
+      await Promise.all([fetchReviews(), fetchSummary()])
+      setSpikeAlert(null)
+      setAppError(null)
     } catch (err) {
       console.error('Clear failed:', err)
+      setAppError(err.message || 'Failed to clear database.')
     }
   }
 
-  // Update status (optimistic UI update + PATCH request)
+  // Update status (optimistic UI update + rollback on failure)
   const handleStatusChange = async (reviewId, newStatus) => {
+    const previousReviews = reviews
+
     // Optimistic local state update
     setReviews((prev) =>
       prev.map((r) => (r.id === reviewId ? { ...r, status: newStatus } : r))
     )
 
     try {
-      const res = await fetch(`/api/reviews/${reviewId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      })
-      if (!res.ok) {
-        // Revert on failure
-        await fetchReviews()
-      } else {
-        fetchSummary()
-      }
+      await api.updateReviewStatus(reviewId, newStatus)
+      fetchSummary()
     } catch (err) {
       console.error('Status update failed:', err)
-      await fetchReviews()
+      // Revert to previous state on failure
+      setReviews(previousReviews)
+      setAppError(`Failed to update review status: ${err.message}`)
     }
   }
 
@@ -189,9 +184,35 @@ export default function App() {
         totalReviews={reviews.length}
       />
 
+      {/* Global Error Banner */}
+      {appError && (
+        <div
+          role="alert"
+          className="border-b border-line bg-surface px-4 py-2 text-xs border-l-4 border-l-negative flex items-center justify-between text-negative"
+        >
+          <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span className="font-medium">{appError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAppError(null)}
+              aria-label="Dismiss error"
+              className="text-muted hover:text-ink p-1 ml-4"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Negative Spike Notification Banner */}
       {spikeAlert && (
-        <div className="border-b border-line bg-surface px-4 py-2 text-xs border-l-4 border-l-negative flex items-center justify-between">
+        <div
+          role="status"
+          className="border-b border-line bg-surface px-4 py-2 text-xs border-l-4 border-l-negative flex items-center justify-between"
+        >
           <div className="max-w-7xl mx-auto w-full flex items-center justify-between">
             <span className="text-ink">{spikeAlert.message}</span>
             <button

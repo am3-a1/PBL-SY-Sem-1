@@ -1,3 +1,17 @@
+"""
+FeedPulse Offline NLP Pipeline
+-------------------------------
+Architectural Note & Limitations:
+This module provides a fast, 100% offline sentiment analysis and theme classification
+pipeline suitable for local deployments and student portfolios.
+- Sentiment scoring is powered by VADER (Valence Aware Dictionary and sEntiment Reasoner),
+  a rule-based lexicon analyzer, augmented with hybrid star-rating weighting.
+- Theme classification combines domain keyword regex matching with TF-IDF cosine similarity
+  against anchor category descriptions.
+- It is NOT a deep neural network or large language model (LLM). Sarcasm without low star ratings,
+  highly domain-specific jargon, or mixed-topic reviews may have lower confidence.
+"""
+
 import re
 import logging
 from typing import Dict, Any, List, Optional, Tuple
@@ -5,6 +19,7 @@ import httpx
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from config import validate_slack_webhook_url
 
 logger = logging.getLogger("feedpulse.nlp")
 logging.basicConfig(level=logging.INFO)
@@ -47,7 +62,7 @@ THEME_DESCRIPTIONS = {
     ),
 }
 
-# Domain keyword weights for rapid regex/keyword matching boost
+# Domain keyword regex weights
 THEME_KEYWORDS = {
     "Login Crash": [
         r"\b(login|log-in|log in|logging in)\b",
@@ -85,24 +100,35 @@ THEME_KEYWORDS = {
     ],
 }
 
-# Pre-train a lightweight TF-IDF model on anchor descriptions
+# Pre-train lightweight TF-IDF model on anchor descriptions
 theme_names_ordered = list(THEME_DESCRIPTIONS.keys())
 theme_corpus = [THEME_DESCRIPTIONS[t] for t in theme_names_ordered]
 tfidf_vectorizer = TfidfVectorizer(stop_words="english")
 theme_vectors = tfidf_vectorizer.fit_transform(theme_corpus)
 
 
+def clean_review_text(text: Optional[str]) -> str:
+    """Sanitizes text by stripping whitespace and removing excessive non-printable chars."""
+    if not text:
+        return ""
+    text_str = str(text).strip()
+    if text_str.lower() in ("nan", "null", "none"):
+        return ""
+    return text_str
+
+
 def analyze_sentiment(text: str) -> Tuple[float, str]:
     """
-    Computes VADER compound score (-1.0 to 1.0) and assigns label.
+    Computes VADER compound polarity score (-1.0 to 1.0) and assigns label.
     >= 0.05: Positive
     <= -0.05: Negative
     Else: Neutral
     """
-    if not text or not text.strip():
+    cleaned = clean_review_text(text)
+    if not cleaned:
         return 0.0, "Neutral"
 
-    scores = analyzer.polarity_scores(text)
+    scores = analyzer.polarity_scores(cleaned)
     compound = round(scores["compound"], 4)
 
     if compound >= 0.05:
@@ -123,8 +149,8 @@ def apply_rating_weight(
     """
     Applies a hybrid weighting model combining star rating (1-5) and VADER text sentiment.
     - Rating 1-2: Strictly Negative, capping score to <= -0.30 (or <= -0.50 for 1-star).
-    - Rating 3: Weighted towards Neutral, dampening extremes.
-    - Rating 4-5: Weighted towards Positive, dampening minor complaints or sarcasm.
+    - Rating 3: Weighted towards Neutral.
+    - Rating 4-5: Weighted towards Positive, overriding minor complaints or sarcasm.
     """
     if rating is None:
         return sentiment_score, sentiment_label
@@ -135,7 +161,7 @@ def apply_rating_weight(
         return sentiment_score, sentiment_label
 
     if r <= 1:
-        # Strongly negative (1-star review)
+        # Strongly negative (1-star review, handles polite sarcasm)
         if sentiment_score >= 0.0:
             adjusted = -0.60 - round(min(0.35, sentiment_score * 0.4), 4)
         else:
@@ -191,51 +217,66 @@ def apply_rating_weight(
     return sentiment_score, sentiment_label
 
 
-def classify_theme(text: str) -> str:
+def classify_theme(text: str) -> Tuple[str, float]:
     """
     Combines direct keyword hits with TF-IDF cosine similarity against anchor themes.
+    Returns:
+        (category_theme, confidence_score) where confidence is between 0.0 and 1.0.
     """
-    if not text or not text.strip():
-        return "General"
+    cleaned = clean_review_text(text)
+    if not cleaned:
+        return "General", 0.5
 
-    lower_text = text.lower()
+    lower_text = cleaned.lower()
 
     # Step 1: Check direct keyword regex matches with scores
-    keyword_scores = {theme: 0 for theme in THEMES}
+    keyword_scores = {theme: 0.0 for theme in THEMES}
+    has_keyword_match = False
     for theme, patterns in THEME_KEYWORDS.items():
         for pattern in patterns:
             if re.search(pattern, lower_text):
-                keyword_scores[theme] += 2
+                keyword_scores[theme] += 2.0
+                has_keyword_match = True
 
     # Step 2: TF-IDF similarity score
+    tfidf_max_sim = 0.0
     try:
-        review_vec = tfidf_vectorizer.transform([text])
+        review_vec = tfidf_vectorizer.transform([cleaned])
         similarities = cosine_similarity(review_vec, theme_vectors)[0]
         for idx, theme_name in enumerate(theme_names_ordered):
-            keyword_scores[theme_name] += similarities[idx] * 2.5
+            sim = float(similarities[idx])
+            keyword_scores[theme_name] += sim * 2.5
+            if sim > tfidf_max_sim:
+                tfidf_max_sim = sim
     except Exception as e:
         logger.warning(f"TF-IDF similarity failed: {e}")
 
-    # Exclude General if any specific theme has a significant score
+    # Determine best theme
     best_theme = max(keyword_scores.keys(), key=lambda k: keyword_scores[k])
-    if keyword_scores[best_theme] > 0.8:
-        return best_theme
+    best_score = keyword_scores[best_theme]
 
-    return "General"
+    if best_score > 0.8:
+        # Calculate normalized confidence
+        confidence = min(0.98, max(0.55, (best_score / 4.5) * 0.8 + 0.2))
+        return best_theme, round(confidence, 2)
+
+    return "General", 0.50
 
 
 def analyze_review_content(content: str, rating: Optional[int] = None) -> Dict[str, Any]:
     """
-    Full pipeline for single review text with optional star rating weighting.
+    Full pipeline for a single review: sentiment scoring, rating weighting,
+    and theme classification with confidence score.
     """
     sentiment_score, sentiment_label = analyze_sentiment(content)
     if rating is not None:
         sentiment_score, sentiment_label = apply_rating_weight(sentiment_score, sentiment_label, rating)
-    theme = classify_theme(content)
+    theme, confidence = classify_theme(content)
     return {
         "sentiment_score": sentiment_score,
         "sentiment_label": sentiment_label,
         "category_theme": theme,
+        "theme_confidence": confidence,
     }
 
 
@@ -269,7 +310,7 @@ def build_slack_blocks(
     if metrics:
         fields = []
         for key, val in metrics.items():
-            fields.append({"type": "mrkdwn", "text": f"*{key}:*\n{val}"})
+            fields.append({"type": "mrkdwn", "text": f"*{key}:*\\n{val}"})
         blocks.append({"type": "section", "fields": fields})
 
     if sample_review:
@@ -278,7 +319,7 @@ def build_slack_blocks(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"> *Critical User Quote:*\n> \"{sample_review}\"",
+                    "text": f"> *Critical User Quote:*\\n> \\\"{sample_review}\\\"",
                 },
             }
         )
@@ -306,23 +347,26 @@ async def dispatch_slack_alert(
     sample_review: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Sends payload to Slack Incoming Webhook, or runs in sandbox mode if no URL.
+    Sends payload to Slack Incoming Webhook, or runs in sandbox mode if no valid webhook URL.
+    Enforces strict URL parsing, HTTPS scheme, hooks.slack.com host, and path validation.
     """
     payload = build_slack_blocks(title, message, metrics, sample_review)
 
-    if not webhook_url or not webhook_url.strip() or "hooks.slack.com" not in webhook_url:
-        logger.info(f"[SANDBOX SLACK ALERT] Triggered without live webhook: {title}")
+    # Sandbox mode if no webhook URL provided or URL is invalid
+    if not webhook_url or not webhook_url.strip() or not validate_slack_webhook_url(webhook_url):
+        logger.info(f"[SANDBOX SLACK ALERT] Triggered in sandbox simulation: {title}")
         return {
             "status": "sandbox_success",
             "is_sandbox": True,
-            "message": "Slack alert simulated successfully (Sandbox Mode - No active Slack webhook provided).",
+            "message": "Slack alert simulated successfully (Sandbox Mode - No active or valid Slack webhook provided).",
             "payload": payload,
         }
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(webhook_url, json=payload)
+            response = await client.post(webhook_url.strip(), json=payload)
             if response.status_code == 200:
+                logger.info(f"Slack notification successfully dispatched for: {title}")
                 return {
                     "status": "delivered",
                     "is_sandbox": False,
@@ -330,17 +374,18 @@ async def dispatch_slack_alert(
                     "payload": payload,
                 }
             else:
+                logger.warning(f"Slack API returned status {response.status_code}")
                 return {
                     "status": "error",
                     "is_sandbox": False,
-                    "message": f"Slack API returned status {response.status_code}: {response.text}",
+                    "message": f"Slack API returned status {response.status_code}: {response.text[:200]}",
                     "payload": payload,
                 }
     except Exception as exc:
-        logger.error(f"Failed to post to Slack webhook: {exc}")
+        logger.error(f"Failed to post to Slack webhook: {type(exc).__name__}")
         return {
             "status": "error",
             "is_sandbox": False,
-            "message": f"Network exception when posting to Slack: {str(exc)}",
+            "message": f"Network exception when posting to Slack: {str(exc)[:200]}",
             "payload": payload,
         }
