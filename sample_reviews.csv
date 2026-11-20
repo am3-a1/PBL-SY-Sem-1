@@ -1,11 +1,51 @@
-source,author,rating,content
-App Store,Devon_Miles,1,"Since version 4.2 the app crashes immediately when I tap login. Completely locked out of my account."
-Google Play,Priya_K,1,"Double charged my card $29.99 for the subscription renewal and your restore button doesn't work!"
-Reddit,u/audio_geek,, "Huge latency and memory leak when rendering multiple waveform tracks. CPU spikes to 100%."
-Discord,Zack#1234,, "The new dark mode colors have terrible contrast and the font size is too small on mobile."
-App Store,Maya_Lin,5,"The new feedback triage and analytics dashboard is incredible. Cut our response time in half!"
-Google Play,Alex_Mercer,5,"Fantastic app! Works flawlessly and syncing across devices is super fast."
-Reddit,u/tech_lead_dan,, "Authentication with Google OAuth is failing with a 500 error code on Android."
-Discord,Sarah_Q#8821,, "Could we get an option to export weekly metrics to CSV or PDF? Loving the tool so far."
-App Store,Liam_W,2,"Takes 15 seconds to open on cold start. Very sluggish compared to the previous version."
-Google Play,Elena_R,1,"Canceled subscription during the trial but still got billed! Support has not answered."
+source,author,rating,content,created_at
+Google Play,Devon_Miles,5,Seamless 2FA authentication and instant biometric Face ID login. Works like a charm.,2026-03-25T10:06:00Z
+Apple App Store,Priya_K,3,"Performance is acceptable on broadband wifi, but somewhat slow on mobile 4G networks.",2026-03-25T12:16:00Z
+Reddit,u/audio_geek,2,Buttons are overlapping on mobile screen and the triage workflow is clunky and confusing.,2026-03-25T14:29:00Z
+Discord,Zack#1234,,Is there an official public roadmap for upcoming quarterly feature releases?,2026-03-25T16:37:00Z
+X (Twitter),@tech_reviewer,1,Massive memory leak! RAM consumption spikes to 4GB within 15 minutes and freezes OS.,2026-03-25T18:48:00Z
+CSV / Other,Michael_Chang,5,The design overhaul is intuitive and clean. Everything is exactly where I expect it.,2026-03-25T20:56:00Z
+Google Play,Fatima_B,2,Buttons are overlapping on mobile screen and the triage workflow is clunky and confusing.,2026-03-25T23:09:00Z
+Apple App Store,u/crypto_trader_x,1,Unbearable lag and frame stuttering when scrolling through review lists.,2026-03-26T01:10:00Z
+Reddit,FinanceGuru#9021,1,Double charged my credit card $49.99 for annual renewal and support will not reply.,2026-03-26T03:14:00Z
+Discord,Antoine_D,5,This platform saved our product team dozens of hours every single sprint. Brilliant software.,2026-03-26T05:19:00Z
+X (Twitter),Müller_Hans,2,Buttons are overlapping on mobile screen and the triage workflow is clunky and confusing.,2026-03-26T07:28:00Z
+CSV / Other,u/neutral_observer,3,Authentication flow requires email confirmation on new devices as expected.,2026-03-26T09:31:00Z
+Google Play,Kenji_Sato,5,By far the most comprehensive feedback triage tool we have used this year.,2026-03-26T11:46:00Z
+Apple App Store,u/saas_builder_99,1,App crashes immediately upon tapping the login button. Completely locked out of my account!,2026-03-26T13:51:00Z
+Reddit,ClaraBell#7700,3,Average functionality compared to competitors. Waiting for additional integrations.,2026-03-26T15:59:00Z
+Discord,Sarah_Connor,3,Interface layout is okay. Would prefer an option to collapse the left sidebar.,2026-03-26T18:14:00Z
+X (Twitter),Liam_N,4,Noticeable speed improvements after the latest update. Queries return almost instantly.,2026-03-26T20:26:00Z
+CSV / Other,u/frontend_ninja,2,Biometric login fails randomly and forces me to reset my password every morning.,2026-03-26T22:34:00Z
+Google Play,DevOps_Dan#4040,,Can we configure SSO SAML integration with Okta or Azure Active Directory?,2026-03-27T00:36:00Z
+Apple App Store,@product_fan,5,Transparent pricing with no hidden charges. Upgrading our tier was frictionless.,2026-03-27T02:37:00Z
+Reddit,Elena_Rostova,5,"Zero latency, buttery smooth 60fps animations, and minimal RAM usage.",2026-03-27T04:48:00Z
+Discord,Carlos_M,3,Basic triage tool. Meets requirements for small teams but lacks enterprise features.,2026-03-27T06:58:00Z
+X (Twitter),u/kernel_hacker,3,"The font size increased from 14px to 16px. Neither better nor worse, just different.",2026-03-27T09:11:00Z
+CSV / Other,SupportBot#9999,5,Straightforward subscription billing and instant PDF invoice downloads. Highly recommended!,2026-03-27T11:15:00Z
+Google Play,@mobile_tester,3,"Performance is acceptable on broadband wifi, but somewhat slow on mobile 4G networks.",2026-03-27T13:27:00Z
+Apple App Store,Amina_S,4,Loving the modern aesthetic and color contrast. Very easy on the eyes during late night work.,2026-03-27T15:30:00Z
+Reddit,Jonas_K,,Checking to see if there is documentation on exporting review summaries to PDF.,2026-03-27T17:35:00Z
+Discord,u/data_viz_pro,5,Straightforward subscription billing and instant PDF invoice downloads. Highly recommended!,2026-03-27T19:44:00Z
+X (Twitter),PixelArtist#1010,1,Requested a refund two weeks ago after duplicate billing and was completely ignored.,2026-03-27T21:45:00Z
+CSV / Other,@daily_tech_feed,2,Buttons are overlapping on mobile screen and the triage workflow is clunky and confusing.,2026-03-27T23:54:00Z
+Google Play,Devon_Miles,5,By far the most comprehensive feedback triage tool we have used this year.,2026-03-28T02:01:00Z
+Apple App Store,Priya_K,5,Absolutely gorgeous user interface! The new dark mode and typography are pristine.,2026-03-28T04:03:00Z
+Reddit,u/audio_geek,1,App crashes immediately upon tapping the login button. Completely locked out of my account!,2026-03-28T06:07:00Z
+Discord,Zack#1234,5,Straightforward subscription billing and instant PDF invoice downloads. Highly recommended!,2026-03-28T08:21:00Z
+X (Twitter),@tech_reviewer,2,Buttons are overlapping on mobile screen and the triage workflow is clunky and confusing.,2026-03-28T10:36:00Z
+CSV / Other,Michael_Chang,3,"The application works as expected. Nothing extraordinary, but does the job.",2026-03-28T12:38:00Z
+Google Play,Fatima_B,1,Repeated crash on startup after the 4.2.0 update. Fatal exception error every time.,2026-03-28T14:46:00Z
+Apple App Store,u/crypto_trader_x,3,"The application works as expected. Nothing extraordinary, but does the job.",2026-03-28T16:48:00Z
+Reddit,FinanceGuru#9021,3,Interface layout is okay. Would prefer an option to collapse the left sidebar.,2026-03-28T18:59:00Z
+Discord,Antoine_D,3,Average functionality compared to competitors. Waiting for additional integrations.,2026-03-28T21:13:00Z
+X (Twitter),Müller_Hans,,Is there an official public roadmap for upcoming quarterly feature releases?,2026-03-28T23:16:00Z
+CSV / Other,u/neutral_observer,,Is there an official public roadmap for upcoming quarterly feature releases?,2026-03-29T01:24:00Z
+Google Play,Kenji_Sato,5,Seamless 2FA authentication and instant biometric Face ID login. Works like a charm.,2026-03-29T03:39:00Z
+Apple App Store,u/saas_builder_99,2,Buttons are overlapping on mobile screen and the triage workflow is clunky and confusing.,2026-03-29T05:51:00Z
+Reddit,ClaraBell#7700,3,"Performance is acceptable on broadband wifi, but somewhat slow on mobile 4G networks.",2026-03-29T07:56:00Z
+Discord,Sarah_Connor,,Does the enterprise tier support payment via ACH wire transfer?,2026-03-29T10:05:00Z
+X (Twitter),Liam_N,5,Absolutely gorgeous user interface! The new dark mode and typography are pristine.,2026-03-29T12:17:00Z
+CSV / Other,u/frontend_ninja,4,Noticeable speed improvements after the latest update. Queries return almost instantly.,2026-03-29T14:22:00Z
+Google Play,DevOps_Dan#4040,1,Double charged my credit card $49.99 for annual renewal and support will not reply.,2026-03-29T16:29:00Z
+Apple App Store,@product_fan,5,This platform saved our product team dozens of hours every single sprint. Brilliant software.,2026-03-29T18:43:00Z

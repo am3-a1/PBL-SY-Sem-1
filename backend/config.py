@@ -103,6 +103,10 @@ class Settings:
         self.DEFAULT_SLACK_WEBHOOK_URL: str = os.getenv("SLACK_WEBHOOK_URL", "")
         self.DEFAULT_NEGATIVE_THRESHOLD_PCT: float = float(os.getenv("NEGATIVE_THRESHOLD_PCT", "30.0"))
 
+        # Time-Based Anomaly Detection Defaults
+        self.DEFAULT_Z_SCORE_THRESHOLD: float = float(os.getenv("Z_SCORE_THRESHOLD", "2.5"))
+        self.Z_SCORE_THRESHOLD: float = self.DEFAULT_Z_SCORE_THRESHOLD
+
         # Backup Directory
         self.BACKUP_DIR: str = os.getenv("BACKUP_DIR", os.path.join(str(_backend_dir), "backups"))
         self.BACKUP_RETENTION_COUNT: int = int(os.getenv("BACKUP_RETENTION_COUNT", "10"))

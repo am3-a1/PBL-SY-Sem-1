@@ -1,11 +1,51 @@
-source,author,rating,content
-App Store,Michael_Chang,1,"Why was I billed twice for the annual plan? Double charge appeared on my Mastercard statement today."
-Google Play,Fatima_B,2,"Requested a refund 5 days ago after accidental purchase. Google Play says contact developer but no response."
-Reddit,u/crypto_trader_x,, "The checkout portal declined my American Express card with error code 402. Payment gateway seems down."
-Discord,FinanceGuru#9021,, "Need an official VAT invoice receipt for my company tax filings. Where can I download PDF receipts?"
-App Store,Laura_V,1,"Tried to cancel subscription in settings but the cancel button is grayed out. Shady billing practice!"
-Google Play,Dmitry_K,2,"Price increased from $9.99 to $19.99 without prior notice. Renewed automatically without my consent."
-Reddit,u/sub_reviewer_dan,1,"In-app purchase unlocked nothing. Apple ID receipt confirmed transaction but features remain locked behind paywall."
-Discord,Zoe_M#3311,, "Can we pay via PayPal or SEPA direct debit? Our team credit card limits are strict."
-App Store,Brian_H,3,"Product is decent but the subscription tiers are confusing. Unclear what is included in Pro vs Enterprise."
-Google Play,Aaliyah_W,1,"Overcharged for team seats. Added one contractor and got charged for a full annual bundle."
+source,author,rating,content,created_at
+Google Play,Devon_Miles,5,Straightforward subscription billing and instant PDF invoice downloads. Highly recommended!,2026-03-20T10:03:00Z
+Apple App Store,Priya_K,5,Transparent pricing with no hidden charges. Upgrading our tier was frictionless.,2026-03-20T12:08:00Z
+Reddit,u/audio_geek,5,Straightforward subscription billing and instant PDF invoice downloads. Highly recommended!,2026-03-20T14:11:00Z
+Discord,Zack#1234,5,Transparent pricing with no hidden charges. Upgrading our tier was frictionless.,2026-03-20T16:15:00Z
+X (Twitter),@tech_reviewer,5,Straightforward subscription billing and instant PDF invoice downloads. Highly recommended!,2026-03-20T18:27:00Z
+CSV / Other,Michael_Chang,5,Transparent pricing with no hidden charges. Upgrading our tier was frictionless.,2026-03-20T20:36:00Z
+Google Play,Fatima_B,5,Straightforward subscription billing and instant PDF invoice downloads. Highly recommended!,2026-03-20T22:45:00Z
+Apple App Store,u/crypto_trader_x,5,Transparent pricing with no hidden charges. Upgrading our tier was frictionless.,2026-03-21T00:50:00Z
+Reddit,FinanceGuru#9021,1,Double charged my credit card $49.99 for annual renewal and support will not reply.,2026-03-21T03:02:00Z
+Discord,Antoine_D,1,Fraudulent duplicate subscription charge appeared on my banking statement today.,2026-03-21T05:12:00Z
+X (Twitter),Müller_Hans,1,Requested a refund two weeks ago after duplicate billing and was completely ignored.,2026-03-21T07:19:00Z
+CSV / Other,u/neutral_observer,2,Payment gateway constantly rejects valid Mastercard credentials with generic error.,2026-03-21T09:34:00Z
+Google Play,Kenji_Sato,1,Double charged my credit card $49.99 for annual renewal and support will not reply.,2026-03-21T11:44:00Z
+Apple App Store,u/saas_builder_99,1,Fraudulent duplicate subscription charge appeared on my banking statement today.,2026-03-21T13:51:00Z
+Reddit,ClaraBell#7700,1,Requested a refund two weeks ago after duplicate billing and was completely ignored.,2026-03-21T15:57:00Z
+Discord,Sarah_Connor,2,Payment gateway constantly rejects valid Mastercard credentials with generic error.,2026-03-21T18:01:00Z
+X (Twitter),Liam_N,1,Double charged my credit card $49.99 for annual renewal and support will not reply.,2026-03-21T20:04:00Z
+CSV / Other,u/frontend_ninja,1,Fraudulent duplicate subscription charge appeared on my banking statement today.,2026-03-21T22:13:00Z
+Google Play,DevOps_Dan#4040,1,Requested a refund two weeks ago after duplicate billing and was completely ignored.,2026-03-22T00:21:00Z
+Apple App Store,@product_fan,2,Payment gateway constantly rejects valid Mastercard credentials with generic error.,2026-03-22T02:23:00Z
+Reddit,Elena_Rostova,1,Double charged my credit card $49.99 for annual renewal and support will not reply.,2026-03-22T04:36:00Z
+Discord,Carlos_M,1,Fraudulent duplicate subscription charge appeared on my banking statement today.,2026-03-22T06:37:00Z
+X (Twitter),u/kernel_hacker,1,Requested a refund two weeks ago after duplicate billing and was completely ignored.,2026-03-22T08:51:00Z
+CSV / Other,SupportBot#9999,2,Payment gateway constantly rejects valid Mastercard credentials with generic error.,2026-03-22T10:53:00Z
+Google Play,@mobile_tester,1,Double charged my credit card $49.99 for annual renewal and support will not reply.,2026-03-22T12:56:00Z
+Apple App Store,Amina_S,1,Fraudulent duplicate subscription charge appeared on my banking statement today.,2026-03-22T15:07:00Z
+Reddit,Jonas_K,1,Requested a refund two weeks ago after duplicate billing and was completely ignored.,2026-03-22T17:10:00Z
+Discord,u/data_viz_pro,2,Payment gateway constantly rejects valid Mastercard credentials with generic error.,2026-03-22T19:23:00Z
+X (Twitter),PixelArtist#1010,3,Invoices are generated on the 1st of every month. Standard subscription model.,2026-03-22T21:34:00Z
+CSV / Other,@daily_tech_feed,,Does the enterprise tier support payment via ACH wire transfer?,2026-03-22T23:41:00Z
+Google Play,Devon_Miles,3,Invoices are generated on the 1st of every month. Standard subscription model.,2026-03-23T01:51:00Z
+Apple App Store,Priya_K,,Does the enterprise tier support payment via ACH wire transfer?,2026-03-23T03:53:00Z
+Reddit,u/audio_geek,3,Invoices are generated on the 1st of every month. Standard subscription model.,2026-03-23T06:00:00Z
+Discord,Zack#1234,,Does the enterprise tier support payment via ACH wire transfer?,2026-03-23T08:07:00Z
+X (Twitter),@tech_reviewer,3,Invoices are generated on the 1st of every month. Standard subscription model.,2026-03-23T10:17:00Z
+CSV / Other,Michael_Chang,,Does the enterprise tier support payment via ACH wire transfer?,2026-03-23T12:25:00Z
+Google Play,Fatima_B,5,Review #37: Straightforward subscription billing and instant PDF invoice downloads. Highly recommended!,2026-03-23T14:34:00Z
+Apple App Store,u/crypto_trader_x,5,Review #38: Transparent pricing with no hidden charges. Upgrading our tier was frictionless.,2026-03-23T16:39:00Z
+Reddit,FinanceGuru#9021,5,Review #39: Straightforward subscription billing and instant PDF invoice downloads. Highly recommended!,2026-03-23T18:48:00Z
+Discord,Antoine_D,5,Review #40: Transparent pricing with no hidden charges. Upgrading our tier was frictionless.,2026-03-23T21:02:00Z
+X (Twitter),Müller_Hans,5,Review #41: Straightforward subscription billing and instant PDF invoice downloads. Highly recommended!,2026-03-23T23:03:00Z
+CSV / Other,u/neutral_observer,5,Review #42: Transparent pricing with no hidden charges. Upgrading our tier was frictionless.,2026-03-24T01:14:00Z
+Google Play,Kenji_Sato,5,Review #43: Straightforward subscription billing and instant PDF invoice downloads. Highly recommended!,2026-03-24T03:26:00Z
+Apple App Store,u/saas_builder_99,5,Review #44: Transparent pricing with no hidden charges. Upgrading our tier was frictionless.,2026-03-24T05:28:00Z
+Reddit,ClaraBell#7700,1,Review #45: Double charged my credit card $49.99 for annual renewal and support will not reply.,2026-03-24T07:39:00Z
+Discord,Sarah_Connor,1,Review #46: Fraudulent duplicate subscription charge appeared on my banking statement today.,2026-03-24T09:54:00Z
+X (Twitter),Liam_N,1,Review #47: Requested a refund two weeks ago after duplicate billing and was completely ignored.,2026-03-24T12:03:00Z
+CSV / Other,u/frontend_ninja,2,Review #48: Payment gateway constantly rejects valid Mastercard credentials with generic error.,2026-03-24T14:16:00Z
+Google Play,DevOps_Dan#4040,1,Review #49: Double charged my credit card $49.99 for annual renewal and support will not reply.,2026-03-24T16:21:00Z
+Apple App Store,@product_fan,1,Review #50: Fraudulent duplicate subscription charge appeared on my banking statement today.,2026-03-24T18:34:00Z

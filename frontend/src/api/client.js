@@ -122,6 +122,7 @@ export const api = {
     if (params.sort_order) query.set('sort_order', params.sort_order)
     if (params.page) query.set('page', params.page)
     if (params.page_size) query.set('page_size', params.page_size)
+    if (params.limit) query.set('limit', params.limit)
 
     const qs = query.toString()
     return request(`/api/reviews${qs ? `?${qs}` : ''}`)
@@ -156,9 +157,12 @@ export const api = {
     return this.seedReviews()
   },
 
-  async uploadCsv(file) {
+  async uploadCsv(file, source = null) {
     const formData = new FormData()
     formData.append('file', file)
+    if (source && source !== 'auto' && source !== 'All') {
+      formData.append('source', source)
+    }
     return request('/api/reviews/upload', {
       method: 'POST',
       body: formData,
@@ -179,6 +183,13 @@ export const api = {
   // Analytics
   async getAnalyticsSummary(timeframe = '30d') {
     return request(`/api/analytics/summary?timeframe=${encodeURIComponent(timeframe)}`)
+  },
+
+  async getAnomalies(params = {}) {
+    const query = new URLSearchParams()
+    if (params.z_score_threshold) query.set('z_score_threshold', params.z_score_threshold)
+    const qs = query.toString()
+    return request(`/api/analytics/anomalies${qs ? `?${qs}` : ''}`)
   },
 
   // Alerts

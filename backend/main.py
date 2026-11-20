@@ -14,6 +14,7 @@ from fastapi import (
     Query,
     UploadFile,
     File,
+    Form,
     Header,
     Security,
     status,
@@ -44,8 +45,13 @@ from models import (
     ThemeUpdate,
     ThemeEscalateResponse,
     CsvImportSummary,
+    AnomalyReport,
+    SUPPORTED_SOURCES,
+    DEFAULT_SOURCE,
+    normalize_source,
 )
 import nlp
+import anomaly
 import seed_data
 from config import settings, validate_slack_webhook_url, mask_slack_webhook
 
@@ -376,7 +382,10 @@ async def seed_reviews(db: Session = Depends(get_db)):
 
     if config.is_enabled and neg_pct >= config.negative_threshold_pct:
         alert_triggered = True
-        sample_quote = created_reviews[0].content if created_reviews else "No feedback content"
+        sample_quote = next(
+            (r.content for r in created_reviews if r.sentiment_label == "Negative"),
+            created_reviews[0].content if created_reviews else "No feedback content"
+        )
         alert_result = await nlp.dispatch_slack_alert(
             webhook_url=config.slack_webhook_url,
             title="Spike in Negative App Reviews Detected!",
@@ -388,6 +397,12 @@ async def seed_reviews(db: Session = Depends(get_db)):
                 "Primary Spike Channel": "Multi-Channel Seed",
             },
             sample_review=sample_quote,
+            alert_type="Batch Negative Spike",
+            severity="CRITICAL",
+            theme="Login Crash",
+            affected_reviews=negative_count,
+            negative_pct=neg_pct,
+            time_window="Dataset Ingestion Batch",
         )
 
     return {
@@ -407,6 +422,7 @@ async def seed_reviews(db: Session = Depends(get_db)):
 )
 async def upload_reviews_csv(
     file: UploadFile = File(...),
+    source: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
     """
@@ -489,8 +505,18 @@ async def upload_reviews_csv(
     source_col = col_map.get("source")
     author_col = col_map.get("author")
     rating_col = col_map.get("rating")
+    date_col = col_map.get("created_at") or col_map.get("timestamp") or col_map.get("date")
 
-    valid_sources = {"App Store", "Google Play", "Reddit", "Discord"}
+    explicit_source = None
+    if source is not None and source.strip() and source.strip().lower() not in ("auto", "all"):
+        explicit_source = normalize_source(source.strip())
+        if not explicit_source:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid source '{source}'. Supported sources: {', '.join(SUPPORTED_SOURCES)}",
+            )
+
+    valid_sources = {"App Store", "Google Play", "Reddit", "Discord", "Apple App Store", "X (Twitter)", "CSV / Other"}
     added_reviews = []
     skipped_count = 0
     reasons = []
@@ -518,18 +544,25 @@ async def upload_reviews_csv(
                 )
             continue
 
-        # Source validation (do NOT silently convert invalid sources)
-        source = "App Store"
-        if source_col and pd.notna(row.get(source_col)):
+        # Source resolution
+        if explicit_source:
+            row_source = explicit_source
+        elif source_col and pd.notna(row.get(source_col)):
             raw_source = str(row[source_col]).strip()
-            matched_source = next((s for s in valid_sources if s.lower() == raw_source.lower()), None)
-            if matched_source:
-                source = matched_source
+            if not raw_source or raw_source.lower() in ("nan", "null", "none"):
+                row_source = DEFAULT_SOURCE
             else:
-                skipped_count += 1
-                if len(reasons) < 25:
-                    reasons.append(f"Row {row_num}: Skipped invalid source '{raw_source}'. Must be one of {sorted(list(valid_sources))}.")
-                continue
+                matched_source = normalize_source(raw_source)
+                if matched_source:
+                    row_source = matched_source
+                else:
+                    skipped_count += 1
+                    valid_source_set = sorted(list({"App Store", "Google Play", "Reddit", "Discord", "Apple App Store", "X (Twitter)", "CSV / Other"}))
+                    if len(reasons) < 25:
+                        reasons.append(f"Row {row_num}: Skipped invalid source '{raw_source}'. Must be one of {valid_source_set}.")
+                    continue
+        else:
+            row_source = DEFAULT_SOURCE
 
         # Author validation
         author = "Anonymous User"
@@ -571,16 +604,23 @@ async def upload_reviews_csv(
                         )
                     continue
 
+        # Parse review timestamp if present, otherwise default to current UTC time
+        row_created_at = datetime.utcnow()
+        if date_col and pd.notna(row.get(date_col)):
+            parsed_dt = anomaly.parse_review_timestamp(row.get(date_col))
+            if parsed_dt is not None:
+                row_created_at = parsed_dt
+
         nlp_res = nlp.analyze_review_content(content_text, rating=rating)
         if nlp_res["sentiment_label"] == "Negative":
             negative_count += 1
 
         review_obj = Review(
-            source=source,
+            source=row_source,
             author=author,
             rating=rating,
             content=content_text,
-            created_at=datetime.utcnow(),
+            created_at=row_created_at,
             sentiment_score=nlp_res["sentiment_score"],
             sentiment_label=nlp_res["sentiment_label"],
             category_theme=nlp_res["category_theme"],
@@ -611,7 +651,10 @@ async def upload_reviews_csv(
 
     if config.is_enabled and total_added > 0 and neg_pct >= config.negative_threshold_pct:
         alert_triggered = True
-        sample_quote = added_reviews[0].content if added_reviews else "No feedback"
+        sample_quote = next(
+            (r.content for r in added_reviews if r.sentiment_label == "Negative"),
+            added_reviews[0].content if added_reviews else "No feedback"
+        )
         alert_result = await nlp.dispatch_slack_alert(
             webhook_url=config.slack_webhook_url,
             title="Spike in Negative Reviews (CSV Ingestion Batch)!",
@@ -623,7 +666,25 @@ async def upload_reviews_csv(
                 "File Ingested": file.filename,
             },
             sample_review=sample_quote,
+            alert_type="Batch Negative Spike",
+            severity="CRITICAL",
+            theme=added_reviews[0].category_theme if added_reviews else None,
+            affected_reviews=negative_count,
+            negative_pct=neg_pct,
+            time_window="CSV Upload Batch",
         )
+
+    # Anomaly detector evaluation over time windows
+    all_db_reviews = db.query(Review).all()
+    anomaly_res = anomaly.detect_negative_review_anomalies(
+        reviews=all_db_reviews,
+        threshold=settings.Z_SCORE_THRESHOLD,
+        alert_config=config,
+        dispatch_slack=config.is_enabled and not alert_triggered,
+    )
+    if anomaly_res.alert_triggered and not alert_triggered:
+        alert_triggered = True
+        alert_result = anomaly_res.alert_details
 
     return CsvImportSummary(
         message=f"Successfully imported {total_added} reviews ({skipped_count} skipped).",
@@ -634,6 +695,8 @@ async def upload_reviews_csv(
         reasons=reasons,
         alert_triggered=alert_triggered,
         alert_details=alert_result,
+        anomaly_detected=anomaly_res.is_anomaly,
+        anomaly_details=anomaly_res.model_dump(),
     )
 
 
@@ -661,7 +724,16 @@ def get_reviews(
     query = db.query(Review)
 
     if source and source.strip() and source.lower() != "all":
-        query = query.filter(Review.source == source.strip())
+        s_clean = source.strip()
+        norm_s = normalize_source(s_clean) or s_clean
+        if norm_s == "Apple App Store":
+            query = query.filter(Review.source.in_(["Apple App Store", "App Store"]))
+        elif norm_s == "X (Twitter)":
+            query = query.filter(Review.source.in_(["X (Twitter)", "Twitter"]))
+        elif norm_s == "CSV / Other":
+            query = query.filter(Review.source.in_(["CSV / Other", "CSV", "Other"]))
+        else:
+            query = query.filter(Review.source == norm_s)
     if sentiment and sentiment.strip() and sentiment.lower() != "all":
         query = query.filter(Review.sentiment_label == sentiment.strip())
     if theme and theme.strip() and theme.lower() != "all":
@@ -983,10 +1055,26 @@ def get_analytics_summary(db: Session = Depends(get_db)):
         .group_by(Review.source)
         .all()
     )
-    channel_counts = {"App Store": 0, "Google Play": 0, "Reddit": 0, "Discord": 0}
-    channel_sentiment = {"App Store": 0.0, "Google Play": 0.0, "Reddit": 0.0, "Discord": 0.0}
+    channel_counts = {
+        "Google Play": 0,
+        "Apple App Store": 0,
+        "App Store": 0,
+        "Reddit": 0,
+        "Discord": 0,
+        "X (Twitter)": 0,
+        "CSV / Other": 0,
+    }
+    channel_sentiment = {
+        "Google Play": 0.0,
+        "Apple App Store": 0.0,
+        "App Store": 0.0,
+        "Reddit": 0.0,
+        "Discord": 0.0,
+        "X (Twitter)": 0.0,
+        "CSV / Other": 0.0,
+    }
     for ch, count, avg_score in channel_rows:
-        if ch in channel_counts:
+        if ch:
             channel_counts[ch] = count
             channel_sentiment[ch] = round(float(avg_score or 0.0), 3)
 
@@ -1060,6 +1148,13 @@ def get_analytics_summary(db: Session = Depends(get_db)):
                 )
             )
 
+    # 8. Time-Based Anomaly Detection
+    all_revs = db.query(Review).all()
+    anomaly_rep = anomaly.detect_negative_review_anomalies(
+        reviews=all_revs,
+        threshold=settings.Z_SCORE_THRESHOLD,
+    )
+
     return AnalyticsSummary(
         total_reviews=total,
         avg_sentiment=avg_sentiment,
@@ -1072,6 +1167,27 @@ def get_analytics_summary(db: Session = Depends(get_db)):
         critical_negative_count=critical_negative_count,
         churn_risk_index=churn_risk_index,
         sentiment_timeline=timeline,
+        anomaly_detection=anomaly_rep.model_dump(),
+    )
+
+
+@app.get(
+    "/api/analytics/anomalies",
+    response_model=AnomalyReport,
+    summary="Evaluate negative review time-series anomalies",
+    dependencies=[Depends(verify_read_access)],
+)
+def get_anomaly_report(
+    z_score_threshold: Optional[float] = Query(None, description="Custom Z-score threshold"),
+    db: Session = Depends(get_db),
+):
+    thresh = z_score_threshold if z_score_threshold is not None else settings.Z_SCORE_THRESHOLD
+    all_revs = db.query(Review).all()
+    config = db.query(AlertConfig).first()
+    return anomaly.detect_negative_review_anomalies(
+        reviews=all_revs,
+        threshold=thresh,
+        alert_config=config,
     )
 
 
@@ -1088,6 +1204,7 @@ def get_alert_config(db: Session = Depends(get_db)):
             slack_webhook_url="",
             has_slack_webhook=False,
             negative_threshold_pct=settings.DEFAULT_NEGATIVE_THRESHOLD_PCT,
+            z_score_threshold=settings.Z_SCORE_THRESHOLD,
             is_enabled=False,
         )
     has_webhook = bool(config.slack_webhook_url and config.slack_webhook_url.strip())
@@ -1097,6 +1214,7 @@ def get_alert_config(db: Session = Depends(get_db)):
         slack_webhook_url=masked_url,
         has_slack_webhook=has_webhook,
         negative_threshold_pct=config.negative_threshold_pct,
+        z_score_threshold=settings.Z_SCORE_THRESHOLD,
         is_enabled=config.is_enabled,
     )
 
@@ -1126,6 +1244,13 @@ def update_alert_config(payload: AlertConfigUpdate, db: Session = Depends(get_db
 
     if payload.negative_threshold_pct is not None:
         config.negative_threshold_pct = max(1.0, min(100.0, payload.negative_threshold_pct))
+    if payload.z_score_threshold is not None:
+        if payload.z_score_threshold <= 0.0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Z-score threshold must be greater than 0.0.",
+            )
+        settings.Z_SCORE_THRESHOLD = float(payload.z_score_threshold)
     if payload.is_enabled is not None:
         config.is_enabled = payload.is_enabled
 
@@ -1144,6 +1269,7 @@ def update_alert_config(payload: AlertConfigUpdate, db: Session = Depends(get_db
         slack_webhook_url=masked_url,
         has_slack_webhook=has_webhook,
         negative_threshold_pct=config.negative_threshold_pct,
+        z_score_threshold=settings.Z_SCORE_THRESHOLD,
         is_enabled=config.is_enabled,
     )
 

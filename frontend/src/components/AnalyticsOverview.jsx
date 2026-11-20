@@ -19,7 +19,14 @@ const ALL_THEMES = [
   'General',
 ]
 
-const ALL_CHANNELS = ['App Store', 'Google Play', 'Reddit', 'Discord']
+const ALL_CHANNELS = [
+  'Google Play',
+  'Apple App Store',
+  'Reddit',
+  'Discord',
+  'X (Twitter)',
+  'CSV / Other',
+]
 
 // Custom lightweight tooltip
 const ChartTooltip = ({ active, payload, label }) => {
@@ -58,7 +65,11 @@ export default function AnalyticsOverview({
   reviews = [],
   totalReviewsCount = 0,
   alertConfig = null,
+  summary = null,
+  filters = null,
   onSelectTheme,
+  onSelectChannel,
+  onSelectDate,
   onClearFilters,
   onOpenModal,
   isLoading = false,
@@ -158,9 +169,17 @@ export default function AnalyticsOverview({
       stats[ch] = { total: 0, negative: 0 }
     })
 
+    const normalizeChannel = (src) => {
+      if (!src) return 'CSV / Other'
+      if (src === 'App Store' || src === 'Apple App Store') return 'Apple App Store'
+      if (src === 'Twitter' || src === 'X (Twitter)') return 'X (Twitter)'
+      if (src === 'CSV' || src === 'Other' || src === 'CSV / Other') return 'CSV / Other'
+      return src
+    }
+
     if (reviews && reviews.length > 0) {
       reviews.forEach((r) => {
-        const src = r.source || 'App Store'
+        const src = normalizeChannel(r.source)
         if (!stats[src]) stats[src] = { total: 0, negative: 0 }
         stats[src].total += 1
         if (r.sentiment_label === 'Negative') stats[src].negative += 1
@@ -189,6 +208,7 @@ export default function AnalyticsOverview({
   ).length
 
   const hasSpikeDays = dailyChartData.some((d) => d.isSpike)
+  const anomaly = summary?.anomaly_detection
 
   // Empty & loading states (handled AFTER all hooks are called)
   if (isLoading) {
@@ -232,13 +252,68 @@ export default function AnalyticsOverview({
         {total} reviews · {negativePct}% negative · {openCritical} open critical
       </div>
 
+      {/* Time-Based Anomaly Sentinel Status Card */}
+      {anomaly && (
+        <div
+          data-testid="anomaly-sentinel-card"
+          className={`p-4 rounded-md border text-xs ${
+            anomaly.is_anomaly
+              ? 'bg-negative/5 border-negative/40 text-ink border-l-4 border-l-negative'
+              : 'bg-surface border-line text-ink'
+          }`}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span
+                className={`font-semibold uppercase tracking-wider text-[11px] px-2 py-0.5 rounded ${
+                  anomaly.is_anomaly
+                    ? 'bg-negative text-surface'
+                    : anomaly.status === 'insufficient_data'
+                    ? 'bg-track text-muted'
+                    : 'bg-positive/10 text-positive'
+                }`}
+              >
+                {anomaly.is_anomaly
+                  ? 'Anomaly Detected'
+                  : anomaly.status === 'insufficient_data'
+                  ? 'Insufficient Baseline'
+                  : 'Anomaly Detector Normal'}
+              </span>
+              <span className="font-semibold text-ink">
+                1-Hour Anomaly Sentinel (Z-Score)
+              </span>
+            </div>
+            <div className="text-muted tabular-nums">
+              Window: {anomaly.window_start ? new Date(anomaly.window_start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Current'} ·{' '}
+              Z-Score: <strong className="text-ink">{anomaly.z_score != null ? anomaly.z_score.toFixed(2) : 'N/A'}</strong> (Threshold: {anomaly.threshold ?? 2.5})
+            </div>
+          </div>
+
+          <p className="mt-2 text-muted">
+            {anomaly.details}
+          </p>
+
+          {anomaly.is_anomaly && anomaly.representative_review && (
+            <div className="mt-2.5 p-2.5 rounded bg-surface border border-line text-ink">
+              <span className="font-semibold text-negative block mb-0.5">
+                Triggering Spike — Primary Theme: {anomaly.theme || 'Unclassified'} ({anomaly.current_window_count} negative reviews)
+              </span>
+              <p className="italic text-muted">"{anomaly.representative_review}"</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Hero Stacked Bar Chart */}
       <div className="bg-surface border border-line rounded-md p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
-            <h3 className="text-sm font-semibold text-ink">
-              Reviews per day by sentiment
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-ink">
+                Reviews per day by sentiment
+              </h3>
+              <span className="text-xs text-muted">Click bar to filter by date</span>
+            </div>
             {hasSpikeDays && spikeThreshold != null && (
               <p className="text-xs text-negative mt-0.5">
                 Spike threshold ({spikeThreshold}%) exceeded on flagged days.
@@ -251,7 +326,7 @@ export default function AnalyticsOverview({
             {hasSpikeDays && (
               <span className="flex items-center gap-1.5">
                 <svg width="8" height="8" viewBox="0 0 8 8" className="overflow-visible" aria-hidden="true">
-                  <polygon points="4,7 0.5,1 7.5,1" fill={themeColors?.negative || '#C23B2A'} />
+                  <polygon points="4,7 0.5,1" fill={themeColors?.negative || '#C23B2A'} />
                 </svg>
                 <span>Spike</span>
               </span>
@@ -285,6 +360,11 @@ export default function AnalyticsOverview({
             <BarChart
               data={dailyChartData}
               margin={{ top: 16, right: 10, left: -20, bottom: 5 }}
+              onClick={(state) => {
+                const dateKey = state?.activePayload?.[0]?.payload?.date
+                if (dateKey && onSelectDate) onSelectDate(dateKey)
+              }}
+              className="cursor-pointer"
             >
               <CartesianGrid
                 stroke={themeColors?.line || '#DDE1E6'}
@@ -312,12 +392,14 @@ export default function AnalyticsOverview({
                 name="Negative"
                 stackId="sentiment"
                 fill={themeColors?.negative || '#C23B2A'}
+                cursor="pointer"
               />
               <Bar
                 dataKey="neutral"
                 name="Neutral"
                 stackId="sentiment"
                 fill={themeColors?.neutral || '#8C96A0'}
+                cursor="pointer"
               />
               <Bar
                 dataKey="positive"
@@ -325,6 +407,7 @@ export default function AnalyticsOverview({
                 stackId="sentiment"
                 fill={themeColors?.positive || '#2F7A63'}
                 radius={[4, 4, 0, 0]}
+                cursor="pointer"
               />
               {dailyChartData
                 .filter((d) => d.isSpike)
@@ -360,7 +443,7 @@ export default function AnalyticsOverview({
         <div className="bg-surface border border-line rounded-md p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-ink">Top themes</h3>
-            <span className="text-xs text-muted">Click to filter board</span>
+            <span className="text-xs text-muted">Click to filter</span>
           </div>
 
           <div className="space-y-2">
@@ -369,16 +452,23 @@ export default function AnalyticsOverview({
                 maxThemeCount > 0
                   ? Math.min(100, Math.max(0, Math.round((theme.count / maxThemeCount) * 100)))
                   : 0
+              const isActive = filters?.theme === theme.name
 
               return (
                 <button
                   key={theme.name}
                   type="button"
-                  onClick={() => onSelectTheme(theme.name)}
-                  className="w-full text-left p-2 rounded hover:bg-paper transition-colors group"
+                  onClick={() => onSelectTheme && onSelectTheme(theme.name)}
+                  className={`w-full text-left p-2 rounded transition-colors group ${
+                    isActive ? 'bg-action/10 border border-action/40' : 'hover:bg-paper'
+                  }`}
                 >
                   <div className="flex items-center justify-between text-xs mb-1.5">
-                    <span className="font-medium text-ink group-hover:text-action">
+                    <span
+                      className={`font-medium ${
+                        isActive ? 'text-action font-semibold' : 'text-ink group-hover:text-action'
+                      }`}
+                    >
                       {theme.name}
                     </span>
                     <span className="text-muted tabular-nums">{theme.count}</span>
@@ -388,7 +478,9 @@ export default function AnalyticsOverview({
                     aria-hidden="true"
                   >
                     <div
-                      className="block bg-muted h-[6px] rounded transition-all"
+                      className={`block h-[6px] rounded transition-all ${
+                        isActive ? 'bg-action' : 'bg-muted'
+                      }`}
                       style={{ width: `${themePct}%` }}
                     />
                   </div>
@@ -400,7 +492,10 @@ export default function AnalyticsOverview({
 
         {/* Compact Channels Table */}
         <div className="bg-surface border border-line rounded-md p-5">
-          <h3 className="text-sm font-semibold text-ink mb-3">Channels</h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-ink">Channels</h3>
+            <span className="text-xs text-muted">Click to filter</span>
+          </div>
 
           <table className="w-full text-xs text-left">
             <thead>
@@ -414,10 +509,31 @@ export default function AnalyticsOverview({
               {channelData.map((ch) => {
                 const channelPct =
                   ch.total > 0 ? Math.min(100, Math.max(0, ch.negShare)) : 0
+                const isActive = filters?.source === ch.name
 
                 return (
-                  <tr key={ch.name}>
-                    <td className="py-2.5 font-medium text-ink">{ch.name}</td>
+                  <tr
+                    key={ch.name}
+                    tabIndex={0}
+                    role="button"
+                    onClick={() => onSelectChannel && onSelectChannel(ch.name)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        onSelectChannel && onSelectChannel(ch.name)
+                      }
+                    }}
+                    className={`cursor-pointer transition-colors ${
+                      isActive ? 'bg-action/10' : 'hover:bg-paper'
+                    }`}
+                  >
+                    <td
+                      className={`py-2.5 font-medium ${
+                        isActive ? 'text-action font-semibold' : 'text-ink'
+                      }`}
+                    >
+                      {ch.name}
+                    </td>
                     <td className="py-2.5 text-right text-ink tabular-nums">
                       {ch.total}
                     </td>

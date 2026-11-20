@@ -7,6 +7,7 @@ export default function SlackConfigSection({
 }) {
   const [webhookUrl, setWebhookUrl] = useState('')
   const [threshold, setThreshold] = useState(30.0)
+  const [zScoreThreshold, setZScoreThreshold] = useState(2.5)
   const [isEnabled, setIsEnabled] = useState(true)
 
   // Status message states
@@ -19,6 +20,7 @@ export default function SlackConfigSection({
     if (alertConfig) {
       setWebhookUrl(alertConfig.slack_webhook_url || '')
       setThreshold(alertConfig.negative_threshold_pct ?? 30.0)
+      setZScoreThreshold(alertConfig.z_score_threshold ?? 2.5)
       setIsEnabled(alertConfig.is_enabled ?? true)
     }
   }, [alertConfig])
@@ -31,6 +33,7 @@ export default function SlackConfigSection({
       const data = await api.updateAlertConfig({
         slack_webhook_url: webhookUrl,
         negative_threshold_pct: parseFloat(threshold),
+        z_score_threshold: parseFloat(zScoreThreshold),
         is_enabled: isEnabled,
       })
       if (onUpdateAlertConfig) onUpdateAlertConfig(data)
@@ -125,6 +128,37 @@ export default function SlackConfigSection({
         </div>
       </div>
 
+      {/* Z-Score Anomaly Detection Threshold Slider */}
+      <div>
+        <div className="flex items-center justify-between text-xs mb-1.5">
+          <span className="font-medium text-ink">
+            Time-based anomaly Z-score threshold
+          </span>
+          <span className="font-semibold text-ink tabular-nums">
+            Z ≥ {zScoreThreshold}
+          </span>
+        </div>
+        <input
+          id="z-score-threshold-slider"
+          type="range"
+          min="1.5"
+          max="4.0"
+          step="0.1"
+          value={zScoreThreshold}
+          onChange={(e) => setZScoreThreshold(e.target.value)}
+          className="w-full accent-action cursor-pointer"
+          aria-label="Time-based anomaly Z-score threshold"
+        />
+        <div className="flex justify-between text-muted text-xs mt-1">
+          <span>1.5 (Sensitive)</span>
+          <span>2.5 (Standard default)</span>
+          <span>4.0 (Severe only)</span>
+        </div>
+        <p className="text-muted mt-1 text-[11px]">
+          Calculates historical 1-hour window mean and standard deviation: Z = (current − mean) / std. Triggers when current window exceeds Z threshold.
+        </p>
+      </div>
+
       {/* Enable Toggle */}
       <div className="pt-2">
         <label className="flex items-start gap-2.5 cursor-pointer">
@@ -139,7 +173,7 @@ export default function SlackConfigSection({
               Enable automated spike sentinel
             </span>
             <span className="text-muted block mt-0.5">
-              Automatically dispatches a Slack alert when incoming batches exceed the negative threshold.
+              Automatically dispatches a Slack alert when incoming batches exceed the negative threshold or trigger a Z-score anomaly.
             </span>
           </div>
         </label>

@@ -1,11 +1,51 @@
-source,author,rating,content
-App Store,Jessica_A,5,"Absolutely fantastic tool! The local NLP sentiment tagging saves our product team 5 hours every sprint."
-Google Play,Kenji_Sato,5,"Super fast, lightweight, and works seamlessly offline. Love the dark mode visual aesthetic!"
-Reddit,u/saas_builder_99,5,"The unified Kanban triage board is brilliant. Moving bugs directly into engineering review is so smooth."
-Discord,ClaraBell#7700,, "Shoutout to the engineering team for the snappy release. Drag and drop feels super responsive."
-App Store,David_Miller,5,"Best feedback analytics dashboard on the market. The charts give our executive team crystal-clear visibility."
-Google Play,Amira_Noor,5,"Love the automatic theme categorization! Caught our checkout bug before it impacted customers."
-Reddit,u/frontend_fanatic,4,"The UI design is clean, polished, and intuitive. Great typography and color palette."
-Discord,PixelCraft#1010,, "Setup took less than 2 minutes with the zero-config SQLite backend. Super impressed!"
-App Store,Robert_Chen,5,"Flawless experience. Ingesting both Discord community chat and App Store reviews in one place is magic."
-Google Play,Sophie_Dubois,5,"Outstanding update! Performance is lightning fast on my Samsung Galaxy S24."
+source,author,rating,content,created_at
+Google Play,Devon_Miles,5,Absolutely gorgeous user interface! The new dark mode and typography are pristine.,2026-03-20T10:11:00Z
+Apple App Store,Priya_K,5,The design overhaul is intuitive and clean. Everything is exactly where I expect it.,2026-03-20T12:13:00Z
+Reddit,u/audio_geek,4,Loving the modern aesthetic and color contrast. Very easy on the eyes during late night work.,2026-03-20T14:14:00Z
+Discord,Zack#1234,5,Lightning fast response times even with massive review datasets. Super impressed!,2026-03-20T16:26:00Z
+X (Twitter),@tech_reviewer,5,"Zero latency, buttery smooth 60fps animations, and minimal RAM usage.",2026-03-20T18:31:00Z
+CSV / Other,Michael_Chang,4,Noticeable speed improvements after the latest update. Queries return almost instantly.,2026-03-20T20:35:00Z
+Google Play,Fatima_B,5,Seamless 2FA authentication and instant biometric Face ID login. Works like a charm.,2026-03-20T22:39:00Z
+Apple App Store,u/crypto_trader_x,5,Login is completely rock solid now. Never experienced a single crash or lockout.,2026-03-21T00:42:00Z
+Reddit,FinanceGuru#9021,5,Straightforward subscription billing and instant PDF invoice downloads. Highly recommended!,2026-03-21T02:54:00Z
+Discord,Antoine_D,5,Transparent pricing with no hidden charges. Upgrading our tier was frictionless.,2026-03-21T04:56:00Z
+X (Twitter),Müller_Hans,5,This platform saved our product team dozens of hours every single sprint. Brilliant software.,2026-03-21T07:07:00Z
+CSV / Other,u/neutral_observer,5,Exceptional customer support team and frequent meaningful feature updates.,2026-03-21T09:19:00Z
+Google Play,Kenji_Sato,5,By far the most comprehensive feedback triage tool we have used this year.,2026-03-21T11:34:00Z
+Apple App Store,u/saas_builder_99,4,Very reliable tool for aggregating feedback across all our app store channels.,2026-03-21T13:43:00Z
+Reddit,ClaraBell#7700,5,Review #15: Absolutely gorgeous user interface! The new dark mode and typography are pristine.,2026-03-21T15:45:00Z
+Discord,Sarah_Connor,5,Review #16: The design overhaul is intuitive and clean. Everything is exactly where I expect it.,2026-03-21T17:55:00Z
+X (Twitter),Liam_N,4,Review #17: Loving the modern aesthetic and color contrast. Very easy on the eyes during late night work.,2026-03-21T20:02:00Z
+CSV / Other,u/frontend_ninja,5,Review #18: Lightning fast response times even with massive review datasets. Super impressed!,2026-03-21T22:03:00Z
+Google Play,DevOps_Dan#4040,5,"Review #19: Zero latency, buttery smooth 60fps animations, and minimal RAM usage.",2026-03-22T00:04:00Z
+Apple App Store,@product_fan,4,Review #20: Noticeable speed improvements after the latest update. Queries return almost instantly.,2026-03-22T02:06:00Z
+Reddit,Elena_Rostova,5,Review #21: Seamless 2FA authentication and instant biometric Face ID login. Works like a charm.,2026-03-22T04:10:00Z
+Discord,Carlos_M,5,Review #22: Login is completely rock solid now. Never experienced a single crash or lockout.,2026-03-22T06:14:00Z
+X (Twitter),u/kernel_hacker,5,Review #23: Straightforward subscription billing and instant PDF invoice downloads. Highly recommended!,2026-03-22T08:23:00Z
+CSV / Other,SupportBot#9999,5,Review #24: Transparent pricing with no hidden charges. Upgrading our tier was frictionless.,2026-03-22T10:33:00Z
+Google Play,@mobile_tester,5,Review #25: This platform saved our product team dozens of hours every single sprint. Brilliant software.,2026-03-22T12:34:00Z
+Apple App Store,Amina_S,5,Review #26: Exceptional customer support team and frequent meaningful feature updates.,2026-03-22T14:43:00Z
+Reddit,Jonas_K,5,Review #27: By far the most comprehensive feedback triage tool we have used this year.,2026-03-22T16:47:00Z
+Discord,u/data_viz_pro,4,Review #28: Very reliable tool for aggregating feedback across all our app store channels.,2026-03-22T18:59:00Z
+X (Twitter),PixelArtist#1010,5,Review #29: Absolutely gorgeous user interface! The new dark mode and typography are pristine.,2026-03-22T21:10:00Z
+CSV / Other,@daily_tech_feed,5,Review #30: The design overhaul is intuitive and clean. Everything is exactly where I expect it.,2026-03-22T23:22:00Z
+Google Play,Devon_Miles,4,Review #31: Loving the modern aesthetic and color contrast. Very easy on the eyes during late night work.,2026-03-23T01:31:00Z
+Apple App Store,Priya_K,5,Review #32: Lightning fast response times even with massive review datasets. Super impressed!,2026-03-23T03:38:00Z
+Reddit,u/audio_geek,5,"Review #33: Zero latency, buttery smooth 60fps animations, and minimal RAM usage.",2026-03-23T05:42:00Z
+Discord,Zack#1234,4,Review #34: Noticeable speed improvements after the latest update. Queries return almost instantly.,2026-03-23T07:50:00Z
+X (Twitter),@tech_reviewer,5,Review #35: Seamless 2FA authentication and instant biometric Face ID login. Works like a charm.,2026-03-23T10:00:00Z
+CSV / Other,Michael_Chang,5,Review #36: Login is completely rock solid now. Never experienced a single crash or lockout.,2026-03-23T12:05:00Z
+Google Play,Fatima_B,5,Review #37: Straightforward subscription billing and instant PDF invoice downloads. Highly recommended!,2026-03-23T14:18:00Z
+Apple App Store,u/crypto_trader_x,5,Review #38: Transparent pricing with no hidden charges. Upgrading our tier was frictionless.,2026-03-23T16:32:00Z
+Reddit,FinanceGuru#9021,5,Review #39: This platform saved our product team dozens of hours every single sprint. Brilliant software.,2026-03-23T18:33:00Z
+Discord,Antoine_D,5,Review #40: Exceptional customer support team and frequent meaningful feature updates.,2026-03-23T20:46:00Z
+X (Twitter),Müller_Hans,5,Review #41: By far the most comprehensive feedback triage tool we have used this year.,2026-03-23T22:59:00Z
+CSV / Other,u/neutral_observer,4,Review #42: Very reliable tool for aggregating feedback across all our app store channels.,2026-03-24T01:02:00Z
+Google Play,Kenji_Sato,5,Review #43: Absolutely gorgeous user interface! The new dark mode and typography are pristine.,2026-03-24T03:14:00Z
+Apple App Store,u/saas_builder_99,5,Review #44: The design overhaul is intuitive and clean. Everything is exactly where I expect it.,2026-03-24T05:21:00Z
+Reddit,ClaraBell#7700,4,Review #45: Loving the modern aesthetic and color contrast. Very easy on the eyes during late night work.,2026-03-24T07:27:00Z
+Discord,Sarah_Connor,5,Review #46: Lightning fast response times even with massive review datasets. Super impressed!,2026-03-24T09:32:00Z
+X (Twitter),Liam_N,5,"Review #47: Zero latency, buttery smooth 60fps animations, and minimal RAM usage.",2026-03-24T11:35:00Z
+CSV / Other,u/frontend_ninja,4,Review #48: Noticeable speed improvements after the latest update. Queries return almost instantly.,2026-03-24T13:39:00Z
+Google Play,DevOps_Dan#4040,5,Review #49: Seamless 2FA authentication and instant biometric Face ID login. Works like a charm.,2026-03-24T15:52:00Z
+Apple App Store,@product_fan,5,Review #50: Login is completely rock solid now. Never experienced a single crash or lockout.,2026-03-24T17:58:00Z

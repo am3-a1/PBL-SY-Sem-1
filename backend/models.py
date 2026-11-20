@@ -13,12 +13,54 @@ from sqlalchemy import (
 )
 from database import Base
 
+SUPPORTED_SOURCES = [
+    "Google Play",
+    "Apple App Store",
+    "Reddit",
+    "Discord",
+    "X (Twitter)",
+    "CSV / Other",
+]
+
+SOURCE_ALIASES = {
+    "google play": "Google Play",
+    "play store": "Google Play",
+    "google": "Google Play",
+    "apple app store": "Apple App Store",
+    "app store": "Apple App Store",
+    "apple": "Apple App Store",
+    "ios": "Apple App Store",
+    "reddit": "Reddit",
+    "discord": "Discord",
+    "x (twitter)": "X (Twitter)",
+    "twitter": "X (Twitter)",
+    "x": "X (Twitter)",
+    "csv / other": "CSV / Other",
+    "csv": "CSV / Other",
+    "other": "CSV / Other",
+    "none": "CSV / Other",
+    "unknown": "CSV / Other",
+}
+
+DEFAULT_SOURCE = "CSV / Other"
+
+
+def normalize_source(raw_source: Optional[str]) -> Optional[str]:
+    """
+    Normalizes arbitrary source strings to canonical FeedPulse supported sources.
+    Returns canonical string or None if unmapped.
+    """
+    if not raw_source or not str(raw_source).strip():
+        return None
+    cleaned = str(raw_source).strip().lower()
+    return SOURCE_ALIASES.get(cleaned, None)
+
 
 class Review(Base):
     __tablename__ = "reviews"
 
     id = Column(Integer, primary_key=True, index=True)
-    source = Column(String(50), nullable=False, index=True)  # 'App Store', 'Google Play', 'Reddit', 'Discord'
+    source = Column(String(50), nullable=False, index=True)
     author = Column(String(100), nullable=False)
     rating = Column(Integer, nullable=True)  # 1-5, nullable
     content = Column(Text, nullable=False)
@@ -39,7 +81,7 @@ class Review(Base):
             name="check_sentiment_label",
         ),
         CheckConstraint(
-            "source IN ('App Store', 'Google Play', 'Reddit', 'Discord')",
+            "source IN ('Google Play', 'Apple App Store', 'App Store', 'Reddit', 'Discord', 'X (Twitter)', 'Twitter', 'CSV / Other', 'CSV', 'Other')",
             name="check_source",
         ),
         CheckConstraint(
@@ -114,6 +156,7 @@ class PaginatedReviewResponse(BaseModel):
 
 class AlertConfigBase(BaseModel):
     negative_threshold_pct: float = 30.0
+    z_score_threshold: float = 2.5
     is_enabled: bool = True
 
 
@@ -128,6 +171,7 @@ class AlertConfigResponse(AlertConfigBase):
 class AlertConfigUpdate(BaseModel):
     slack_webhook_url: Optional[str] = None
     negative_threshold_pct: Optional[float] = None
+    z_score_threshold: Optional[float] = None
     is_enabled: Optional[bool] = None
 
 
@@ -156,6 +200,26 @@ class AnalyticsSummary(BaseModel):
     critical_negative_count: int
     churn_risk_index: float
     sentiment_timeline: List[AnalyticsTimelinePoint]
+    anomaly_detection: Optional[Dict[str, Any]] = None
+
+
+class AnomalyReport(BaseModel):
+    is_anomaly: bool
+    z_score: Optional[float] = None
+    threshold: float = 2.5
+    current_negative_count: int = 0
+    current_total_count: int = 0
+    historical_mean: Optional[float] = None
+    historical_std: Optional[float] = None
+    historical_windows_count: int = 0
+    has_sufficient_data: bool = True
+    triggering_theme: Optional[str] = None
+    representative_review: Optional[str] = None
+    time_window: str = "Last 1 Hour"
+    severity: str = "NORMAL"
+    reason: str = ""
+    alert_triggered: bool = False
+    alert_details: Optional[Dict[str, Any]] = None
 
 
 # Theme Schemas
@@ -201,3 +265,5 @@ class CsvImportSummary(BaseModel):
     reasons: List[str] = Field(default_factory=list)
     alert_triggered: bool = False
     alert_details: Optional[Dict[str, Any]] = None
+    anomaly_detected: bool = False
+    anomaly_details: Optional[Dict[str, Any]] = None

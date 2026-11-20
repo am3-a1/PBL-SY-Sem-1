@@ -1,13 +1,51 @@
-source,author,rating,content
-App Store,Devon_Miles,1,"App crashes immediately after launching version 4.2.0 on iOS 17. Completely locked out of my account!"
-Google Play,Priya_K,1,"Double charged my card $29.99 for the subscription renewal and the in-app restore purchase button is broken."
-Reddit,u/audio_geek,1,"Massive memory leak! RAM climbs to 3.2GB within 10 minutes and freezes my entire desktop."
-Discord,Zack#1234,, "Authentication with Google OAuth is failing with a 500 server error code. Cannot log in at all."
-App Store,Marcus_V,1,"The biometric FaceID login broke after the latest release. Shows black screen then force closes."
-Google Play,Elena_R,1,"Canceled my subscription during the free trial period but was still charged $49.99 without consent."
-Reddit,u/dev_complaints,1,"Infinite loading spinner on startup. The app doesn't load dashboard data and crashes after 30 seconds."
-Discord,Sarah_Q#8821,, "Login session expires every 5 minutes and logging back in fails with cryptic error 0x88."
-App Store,Kevin_B,1,"Worst update ever. Battery drains 30% in 15 minutes and my iPhone 15 Pro gets dangerously hot."
-Google Play,Lucas_M,1,"The paywall locks features I already bought lifetime access for. Support has not replied in 4 days."
-App Store,Hannah_T,2,"Frequent stutters and lag when scrolling through cards. Takes forever to respond to taps."
-Google Play,Jorge_S,1,"Login form keeps rejecting valid passwords with 'Invalid salt'. Completely broken authentication."
+source,author,rating,content,created_at
+Google Play,Priya_K,5,"Great UI update, very smooth and responsive navigation.",2026-03-29T12:00:00Z
+Apple App Store,Devon_Miles,4,Solid platform for tracking multi-channel app reviews.,2026-03-29T12:17:00Z
+Reddit,u/audio_geek,5,"Great UI update, very smooth and responsive navigation.",2026-03-29T13:34:00Z
+Discord,Zack#1234,4,Solid platform for tracking multi-channel app reviews.,2026-03-29T13:51:00Z
+X (Twitter),@tech_reviewer,5,"Great UI update, very smooth and responsive navigation.",2026-03-29T14:13:00Z
+CSV / Other,Sarah_Connor,1,Minor login delay when using cellular network.,2026-03-29T15:30:00Z
+Google Play,Liam_N,5,"Great UI update, very smooth and responsive navigation.",2026-03-29T15:47:00Z
+Apple App Store,Elena_Rostova,4,Solid platform for tracking multi-channel app reviews.,2026-03-29T16:09:00Z
+Reddit,Kenji_Sato,5,"Great UI update, very smooth and responsive navigation.",2026-03-29T16:26:00Z
+Discord,Antoine_D,4,Solid platform for tracking multi-channel app reviews.,2026-03-29T17:43:00Z
+X (Twitter),Priya_K,5,"Great UI update, very smooth and responsive navigation.",2026-03-29T18:05:00Z
+CSV / Other,Devon_Miles,4,Solid platform for tracking multi-channel app reviews.,2026-03-29T18:22:00Z
+Google Play,u/audio_geek,5,"Great UI update, very smooth and responsive navigation.",2026-03-29T19:39:00Z
+Apple App Store,Zack#1234,4,Solid platform for tracking multi-channel app reviews.,2026-03-29T19:01:00Z
+Reddit,@tech_reviewer,5,"Great UI update, very smooth and responsive navigation.",2026-03-29T20:18:00Z
+Discord,Sarah_Connor,4,Solid platform for tracking multi-channel app reviews.,2026-03-29T21:35:00Z
+X (Twitter),Liam_N,5,"Great UI update, very smooth and responsive navigation.",2026-03-29T21:52:00Z
+CSV / Other,Elena_Rostova,4,Solid platform for tracking multi-channel app reviews.,2026-03-29T22:14:00Z
+Google Play,Kenji_Sato,1,Minor login delay when using cellular network.,2026-03-29T22:31:00Z
+Apple App Store,Antoine_D,4,Solid platform for tracking multi-channel app reviews.,2026-03-29T23:48:00Z
+Reddit,Priya_K,5,"Great UI update, very smooth and responsive navigation.",2026-03-30T00:10:00Z
+Discord,Devon_Miles,4,Solid platform for tracking multi-channel app reviews.,2026-03-30T00:27:00Z
+X (Twitter),u/audio_geek,5,"Great UI update, very smooth and responsive navigation.",2026-03-30T01:44:00Z
+CSV / Other,Zack#1234,4,Solid platform for tracking multi-channel app reviews.,2026-03-30T01:06:00Z
+Google Play,@tech_reviewer,5,"Great UI update, very smooth and responsive navigation.",2026-03-30T02:23:00Z
+Apple App Store,Sarah_Connor,4,Solid platform for tracking multi-channel app reviews.,2026-03-30T03:40:00Z
+Reddit,Liam_N,5,"Great UI update, very smooth and responsive navigation.",2026-03-30T03:02:00Z
+Discord,Elena_Rostova,4,Solid platform for tracking multi-channel app reviews.,2026-03-30T04:19:00Z
+X (Twitter),Kenji_Sato,5,"Great UI update, very smooth and responsive navigation.",2026-03-30T04:36:00Z
+CSV / Other,Antoine_D,4,Solid platform for tracking multi-channel app reviews.,2026-03-30T05:53:00Z
+Google Play,Priya_K,1,Minor login delay when using cellular network.,2026-03-30T06:15:00Z
+Apple App Store,Devon_Miles,4,Solid platform for tracking multi-channel app reviews.,2026-03-30T06:32:00Z
+Reddit,u/audio_geek,5,"Great UI update, very smooth and responsive navigation.",2026-03-30T07:49:00Z
+Discord,Zack#1234,4,Solid platform for tracking multi-channel app reviews.,2026-03-30T07:11:00Z
+X (Twitter),@tech_reviewer,5,"Great UI update, very smooth and responsive navigation.",2026-03-30T08:28:00Z
+CSV / Other,Sarah_Connor,4,Solid platform for tracking multi-channel app reviews.,2026-03-30T09:45:00Z
+Google Play,Liam_N,5,"Great UI update, very smooth and responsive navigation.",2026-03-30T09:07:00Z
+Apple App Store,Elena_Rostova,4,Solid platform for tracking multi-channel app reviews.,2026-03-30T10:24:00Z
+Google Play,OutageVictim_1,1,Fatal crash! App crashes immediately upon launching version 4.2.0. Completely locked out of my account!,2026-03-30T11:05:00Z
+Apple App Store,OutageVictim_2,1,App crashes instantly on the login screen after entering 2FA code. Repeated crashes on iOS 17.,2026-03-30T11:09:00Z
+Reddit,OutageVictim_3,1,Critical bug: Login button causes the entire app to freeze and force close.,2026-03-30T11:13:00Z
+Discord,OutageVictim_4,1,Cannot log in at all! Application crashes on startup every single time I open it.,2026-03-30T11:17:00Z
+X (Twitter),OutageVictim_5,1,Crash on launch after the latest update. Lost all my unsaved work!,2026-03-30T11:21:00Z
+CSV / Other,OutageVictim_6,1,Broken login authentication! Infinite spinner then fatal crash exception code 500.,2026-03-30T11:25:00Z
+Google Play,OutageVictim_7,1,Immediate crash on Android 14 when tapping sign in. Unusable!,2026-03-30T11:29:00Z
+Apple App Store,OutageVictim_8,1,All our team accounts are locked out because the mobile app crashes on login verification.,2026-03-30T11:33:00Z
+Reddit,OutageVictim_9,1,App crashing non-stop since 20 minutes ago. Please rollback this release immediately!,2026-03-30T11:37:00Z
+Discord,OutageVictim_10,1,Login is completely broken. Crashes back to the home screen instantly.,2026-03-30T11:41:00Z
+X (Twitter),OutageVictim_11,1,"Version 4.2.0 is unusable, force closes repeatedly whenever login is attempted.",2026-03-30T11:45:00Z
+CSV / Other,OutageVictim_12,1,Authentication failure with unhandled exception crash. Locked out of mission-critical account!,2026-03-30T11:49:00Z

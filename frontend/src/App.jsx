@@ -30,6 +30,7 @@ export default function App() {
     source: 'All',
     sentiment: 'All',
     theme: 'All',
+    date: 'All',
     search: '',
   })
 
@@ -157,10 +158,22 @@ export default function App() {
 
   // Filtered reviews (applies to both Kanban board and Analytics)
   const filteredReviews = useMemo(() => {
+    const normalizeSrc = (src) => {
+      if (!src) return 'CSV / Other'
+      if (src === 'App Store' || src === 'Apple App Store') return 'Apple App Store'
+      if (src === 'Twitter' || src === 'X (Twitter)') return 'X (Twitter)'
+      if (src === 'CSV' || src === 'Other' || src === 'CSV / Other') return 'CSV / Other'
+      return src
+    }
+
     return reviews.filter((r) => {
-      if (filters.source !== 'All' && r.source !== filters.source) return false
+      if (filters.source !== 'All' && normalizeSrc(r.source) !== filters.source) return false
       if (filters.sentiment !== 'All' && r.sentiment_label !== filters.sentiment) return false
       if (filters.theme !== 'All' && r.category_theme !== filters.theme) return false
+      if (filters.date && filters.date !== 'All') {
+        const reviewDate = r.created_at ? r.created_at.slice(0, 10) : 'Recent'
+        if (reviewDate !== filters.date) return false
+      }
       if (filters.search) {
         const query = filters.search.toLowerCase()
         const matchContent = r.content.toLowerCase().includes(query)
@@ -171,10 +184,28 @@ export default function App() {
     })
   }, [reviews, filters])
 
-  // Click on theme from Analytics list sets theme filter and switches to Kanban board
+  // Click on theme from Analytics list filters in-place without redirecting
   const handleSelectTheme = (theme) => {
-    setFilters((prev) => ({ ...prev, theme }))
-    setActiveTab('kanban')
+    setFilters((prev) => ({
+      ...prev,
+      theme: prev.theme === theme ? 'All' : theme,
+    }))
+  }
+
+  // Click on channel from Analytics list filters in-place
+  const handleSelectChannel = (channel) => {
+    setFilters((prev) => ({
+      ...prev,
+      source: prev.source === channel ? 'All' : channel,
+    }))
+  }
+
+  // Click on chart bar from Analytics graph filters by date in-place
+  const handleSelectDate = (date) => {
+    setFilters((prev) => ({
+      ...prev,
+      date: prev.date === date ? 'All' : date,
+    }))
   }
 
   const handleClearFilters = () => {
@@ -182,6 +213,7 @@ export default function App() {
       source: 'All',
       sentiment: 'All',
       theme: 'All',
+      date: 'All',
       search: '',
     })
   }
@@ -251,6 +283,26 @@ export default function App() {
         </div>
       )}
 
+      {/* Anomaly Detection Banner */}
+      {summary?.anomaly_detection?.is_anomaly && (
+        <div
+          role="status"
+          data-testid="anomaly-banner"
+          className="border-b border-line bg-negative/10 px-4 py-2.5 text-xs border-l-4 border-l-negative flex items-center justify-between"
+        >
+          <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-negative uppercase tracking-wider text-[10px] px-1.5 py-0.5 rounded bg-negative text-surface">
+                Anomaly Active
+              </span>
+              <span className="text-ink font-medium">
+                {summary.anomaly_detection.details}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Filter bar for both Analytics and Kanban views */}
@@ -267,7 +319,11 @@ export default function App() {
             reviews={filteredReviews}
             totalReviewsCount={reviews.length}
             alertConfig={alertConfig}
+            summary={summary}
+            filters={filters}
             onSelectTheme={handleSelectTheme}
+            onSelectChannel={handleSelectChannel}
+            onSelectDate={handleSelectDate}
             onClearFilters={handleClearFilters}
             onOpenModal={() => openModalWithTab('data')}
             isLoading={isLoading}

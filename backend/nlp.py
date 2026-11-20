@@ -14,6 +14,7 @@ pipeline suitable for local deployments and student portfolios.
 
 import re
 import logging
+from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 import httpx
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
@@ -285,16 +286,44 @@ def build_slack_blocks(
     message: str,
     metrics: Optional[Dict[str, Any]] = None,
     sample_review: Optional[str] = None,
+    *,
+    alert_type: str = "Negative Review Spike",
+    severity: str = "CRITICAL",
+    theme: Optional[str] = None,
+    affected_reviews: Optional[int] = None,
+    negative_pct: Optional[float] = None,
+    time_window: Optional[str] = None,
+    timestamp: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Builds a Slack Block Kit JSON payload.
+    Builds an enriched Slack Block Kit JSON payload containing:
+    - Alert type & severity badge
+    - Triggering theme/category
+    - Number of affected reviews
+    - Negative sentiment percentage
+    - Relevant time window
+    - Representative negative review (if provided)
+    - Alert timestamp
     """
-    blocks = [
+    severity_emojis = {
+        "CRITICAL": "🚨",
+        "HIGH": "⚠️",
+        "WARNING": "⚡",
+        "INFO": "ℹ️",
+    }
+    sev_upper = severity.upper()
+    sev_emoji = severity_emojis.get(sev_upper, "🚨")
+
+    header_text = f"{sev_emoji} [{sev_upper}] FeedPulse Alert: {title}"
+    if len(header_text) > 150:
+        header_text = header_text[:147] + "..."
+
+    blocks: List[Dict[str, Any]] = [
         {
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": f"🚨 {title}",
+                "text": header_text,
                 "emoji": True,
             },
         },
@@ -302,24 +331,46 @@ def build_slack_blocks(
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": message,
+                "text": message[:3000],
             },
         },
     ]
 
-    if metrics:
-        fields = []
-        for key, val in metrics.items():
-            fields.append({"type": "mrkdwn", "text": f"*{key}:*\\n{val}"})
-        blocks.append({"type": "section", "fields": fields})
+    # Resolve field values
+    ts_val = timestamp or datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+    aff_val = str(affected_reviews) if affected_reviews is not None else (str(metrics.get("Total Ingested", "N/A")) if metrics else "N/A")
+    neg_val = f"{negative_pct:.1f}%" if negative_pct is not None else (str(metrics.get("Alert Threshold", "N/A")) if metrics else "N/A")
 
-    if sample_review:
+    fields = [
+        {"type": "mrkdwn", "text": f"*Alert Type:*\n{alert_type}"},
+        {"type": "mrkdwn", "text": f"*Severity:*\n`{sev_upper}`"},
+        {"type": "mrkdwn", "text": f"*Triggering Theme:*\n{theme or 'All Categories'}"},
+        {"type": "mrkdwn", "text": f"*Affected Reviews:*\n{aff_val}"},
+        {"type": "mrkdwn", "text": f"*Negative Share:*\n{neg_val}"},
+        {"type": "mrkdwn", "text": f"*Time Window:*\n{time_window or 'Last 1 Hour'}"},
+        {"type": "mrkdwn", "text": f"*Alert Timestamp:*\n{ts_val}"},
+    ]
+
+    # Include custom metrics not in standard grid
+    if metrics:
+        standard_keys = {"Total Ingested", "Negative Reviews", "Alert Threshold"}
+        for k, v in metrics.items():
+            if k not in standard_keys and len(fields) < 10:
+                fields.append({"type": "mrkdwn", "text": f"*{k}:*\n{v}"})
+
+    blocks.append({"type": "section", "fields": fields})
+
+    # Representative Negative Review (only if actual quote is provided)
+    if sample_review and sample_review.strip():
+        clean_sample = sample_review.strip()
+        if len(clean_sample) > 500:
+            clean_sample = clean_sample[:497] + "..."
         blocks.append(
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"> *Critical User Quote:*\\n> \\\"{sample_review}\\\"",
+                    "text": f"> *Representative Negative Review:*\n> \"{clean_sample}\"",
                 },
             }
         )
@@ -330,13 +381,14 @@ def build_slack_blocks(
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": "FeedPulse Automated Feedback Triage System • Local NLP Sentinel",
+                    "text": "FeedPulse Automated Feedback Triage System • Time-Series Anomaly Sentinel",
                 }
             ],
         }
     )
 
-    return {"text": f"FeedPulse Alert: {title}", "blocks": blocks}
+    fallback_text = f"FeedPulse [{sev_upper}] {alert_type}: {title}"
+    return {"text": fallback_text, "blocks": blocks}
 
 
 async def dispatch_slack_alert(
@@ -345,12 +397,35 @@ async def dispatch_slack_alert(
     message: str,
     metrics: Optional[Dict[str, Any]] = None,
     sample_review: Optional[str] = None,
+    *,
+    alert_type: str = "Negative Review Spike",
+    severity: str = "CRITICAL",
+    theme: Optional[str] = None,
+    affected_reviews: Optional[int] = None,
+    negative_pct: Optional[float] = None,
+    time_window: Optional[str] = None,
+    timestamp: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Sends payload to Slack Incoming Webhook, or runs in sandbox mode if no valid webhook URL.
     Enforces strict URL parsing, HTTPS scheme, hooks.slack.com host, and path validation.
+    Reliability & Security:
+    - Never exposes webhook secrets in logs or responses.
+    - Handles timeouts (10s limit) and network failures without crashing the application.
     """
-    payload = build_slack_blocks(title, message, metrics, sample_review)
+    payload = build_slack_blocks(
+        title=title,
+        message=message,
+        metrics=metrics,
+        sample_review=sample_review,
+        alert_type=alert_type,
+        severity=severity,
+        theme=theme,
+        affected_reviews=affected_reviews,
+        negative_pct=negative_pct,
+        time_window=time_window,
+        timestamp=timestamp,
+    )
 
     # Sandbox mode if no webhook URL provided or URL is invalid
     if not webhook_url or not webhook_url.strip() or not validate_slack_webhook_url(webhook_url):
@@ -366,7 +441,7 @@ async def dispatch_slack_alert(
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(webhook_url.strip(), json=payload)
             if response.status_code == 200:
-                logger.info(f"Slack notification successfully dispatched for: {title}")
+                logger.info(f"Slack notification successfully dispatched: {title}")
                 return {
                     "status": "delivered",
                     "is_sandbox": False,
@@ -374,18 +449,26 @@ async def dispatch_slack_alert(
                     "payload": payload,
                 }
             else:
-                logger.warning(f"Slack API returned status {response.status_code}")
+                logger.warning(f"Slack API returned non-200 status code: {response.status_code}")
                 return {
                     "status": "error",
                     "is_sandbox": False,
                     "message": f"Slack API returned status {response.status_code}: {response.text[:200]}",
                     "payload": payload,
                 }
+    except httpx.TimeoutException:
+        logger.warning("Slack webhook request timed out (10s limit exceeded).")
+        return {
+            "status": "error",
+            "is_sandbox": False,
+            "message": "Slack webhook request timed out (10s limit exceeded).",
+            "payload": payload,
+        }
     except Exception as exc:
         logger.error(f"Failed to post to Slack webhook: {type(exc).__name__}")
         return {
             "status": "error",
             "is_sandbox": False,
-            "message": f"Network exception when posting to Slack: {str(exc)[:200]}",
+            "message": f"Network exception when posting to Slack: {type(exc).__name__}",
             "payload": payload,
         }

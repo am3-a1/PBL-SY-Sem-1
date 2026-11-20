@@ -4,6 +4,7 @@ import api from '../../api/client'
 
 export default function CsvImportSection({ onUploadSuccess }) {
   const [selectedFile, setSelectedFile] = useState(null)
+  const [selectedSource, setSelectedSource] = useState('auto')
   const [isUploading, setIsUploading] = useState(false)
   const [uploadFeedback, setUploadFeedback] = useState(null)
   const [dragOver, setDragOver] = useState(false)
@@ -30,7 +31,7 @@ export default function CsvImportSection({ onUploadSuccess }) {
     setUploadFeedback(null)
 
     try {
-      const data = await api.uploadCsv(selectedFile)
+      const data = await api.uploadCsv(selectedFile, selectedSource)
       setUploadFeedback({
         type: 'success',
         message: data.message,
@@ -51,10 +52,12 @@ export default function CsvImportSection({ onUploadSuccess }) {
   const downloadSampleCsv = () => {
     const csvContent =
       'source,author,rating,content\n' +
-      'App Store,AliceB,1,"The app crashes immediately after I enter my password."\n' +
       'Google Play,BobK,5,"Super smooth experience and fast loading."\n' +
+      'Apple App Store,AliceB,1,"The app crashes immediately after I enter my password."\n' +
       'Reddit,u/sam_dev,, "Memory consumption skyrockets when loading long charts."\n' +
-      'Discord,Zane#0001,, "Subscription renewed but my account shows inactive."\n'
+      'Discord,Zane#0001,, "Subscription renewed but my account shows inactive."\n' +
+      'X (Twitter),@tech_user,4,"Great dark mode update, love the clean typography."\n' +
+      'CSV / Other,InternalTester,2,"Search returns empty results intermittently."\n'
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -78,6 +81,30 @@ export default function CsvImportSection({ onUploadSuccess }) {
           <FileText className="w-3.5 h-3.5" />
           <span>Download CSV template</span>
         </button>
+      </div>
+
+      {/* Source Selection */}
+      <div>
+        <label htmlFor="csv-source-select" className="block text-xs font-medium text-ink mb-1.5">
+          Assign feedback source
+        </label>
+        <select
+          id="csv-source-select"
+          value={selectedSource}
+          onChange={(e) => setSelectedSource(e.target.value)}
+          className="w-full bg-surface border border-line text-ink rounded px-3 py-1.5 text-xs focus:border-action focus-visible:outline-none cursor-pointer"
+        >
+          <option value="auto">Auto-detect from CSV (or default to CSV / Other)</option>
+          <option value="Google Play">Google Play</option>
+          <option value="Apple App Store">Apple App Store</option>
+          <option value="Reddit">Reddit</option>
+          <option value="Discord">Discord</option>
+          <option value="X (Twitter)">X (Twitter)</option>
+          <option value="CSV / Other">CSV / Other</option>
+        </select>
+        <p className="text-muted mt-1 text-[11px]">
+          Associate this channel with all imported reviews in the batch.
+        </p>
       </div>
 
       {/* Dropzone */}
@@ -146,7 +173,12 @@ export default function CsvImportSection({ onUploadSuccess }) {
           )}
           {uploadFeedback.details?.alert_triggered && (
             <p className="mt-1 font-normal text-ink">
-              Spike threshold breached ({uploadFeedback.details.negative_percentage}% negative). Spike notification dispatched to Slack.
+              Spike alert notification dispatched to Slack.
+            </p>
+          )}
+          {uploadFeedback.details?.anomaly_detected && (
+            <p className="mt-1 font-normal text-negative">
+              Time-based anomaly flagged (Z-Score: {uploadFeedback.details.anomaly_details?.z_score}, Theme: {uploadFeedback.details.anomaly_details?.triggering_theme || 'General'}).
             </p>
           )}
         </div>
